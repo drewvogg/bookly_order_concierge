@@ -49,6 +49,7 @@ const responseContract = `Return only JSON with this shape:
 Response rules:
 - The workflow planner has already selected the legal next step. Do not change the action, policy result, IDs, URLs, dates, or required confirmation.
 - If plannerSelectedStep.type is ask_clarifying_question, ask only for the missing information in plannerSelectedStep.missingFields.
+- If asking the customer to choose between multiple matching orders, include each order number with its book title and placed date.
 - If plannerSelectedStep.type is request_confirmation, ask for the exact confirmation implied by plannerSelectedStep.pendingAction and do not imply the action has already happened.
 - If plannerSelectedStep.type is respond, answer using defaultPlannerMessage as the source of truth.
 - Use only facts from the provided state, trace, and planner message.
@@ -67,6 +68,42 @@ function getMessageFromResponse(value: unknown) {
   }
 
   return value.message.trim();
+}
+
+function validateRenderedMessage(input: ResponseRenderInput, message: string) {
+  const needsOrderChoice =
+    input.step.type === "ask_clarifying_question" && input.step.missingFields.includes("orderId");
+  const matches = Array.isArray(input.state.workflowState.orderMatches)
+    ? input.state.workflowState.orderMatches.flatMap((match) => {
+        const record = asRecord(match);
+        return record ? [record] : [];
+      })
+    : [];
+
+  if (!needsOrderChoice || matches.length <= 1) {
+    return;
+  }
+
+  const missingDetails = matches.filter((match) => {
+    const orderId = typeof match.orderId === "string" ? match.orderId : undefined;
+    const itemTitle = typeof match.itemTitle === "string" ? match.itemTitle : undefined;
+    const placedAt = typeof match.placedAt === "string" ? match.placedAt : undefined;
+
+    return (
+      !orderId ||
+      !itemTitle ||
+      !placedAt ||
+      !message.includes(orderId) ||
+      !message.includes(itemTitle) ||
+      !message.includes(placedAt)
+    );
+  });
+
+  if (missingDetails.length > 0) {
+    throw new Error(
+      "Response must include every matching order with order number, book title, and placed date."
+    );
+  }
 }
 
 function isConcreteIntent(value: unknown) {
@@ -149,6 +186,19 @@ function responseFacts(state: ResponseRenderInput["state"]) {
 
   return {
     intent: state.workflowState.intent,
+    orderMatches: Array.isArray(state.workflowState.orderMatches)
+      ? state.workflowState.orderMatches
+          .flatMap((match) => {
+            const record = asRecord(match);
+            return record ? [record] : [];
+          })
+          .map((match) => ({
+            orderId: match.orderId,
+            itemTitle: match.itemTitle,
+            placedAt: match.placedAt,
+            deliveredAt: match.deliveredAt
+          }))
+      : undefined,
     activeOrder: activeOrder
       ? {
           orderId: activeOrder.orderId,
@@ -280,7 +330,9 @@ export class OpenAIModelClient implements ModelClient {
     for (let attempt = 0; attempt <= maxValidationRetries; attempt += 1) {
       const content = await this.requestJson(messages);
       try {
-        return getMessageFromResponse(JSON.parse(content));
+        const message = getMessageFromResponse(JSON.parse(content));
+        validateRenderedMessage(input, message);
+        return message;
       } catch (error) {
         lastValidationError = error instanceof Error ? error.message : "Unknown validation error";
         console.error("[bookly-agent] Live LLM returned invalid response render output", {
