@@ -1,0 +1,109 @@
+[
+  {
+    "orderId": "BK-1001",
+    "customerId": "cust_ava",
+    "itemTitle": "The Hobbit - Deluxe Hardcover Edition",
+    "sku": "HOBBIT-DELUXE-HC",
+    "trackingNumber": "1ZBOOKLY1001",
+    "deliveryZip": "60614",
+    "placedAt": "2026-05-01",
+    "orderValue": 48,
+    "riskFlags": [],
+    "inventoryProfile": "hobbit_same_available"
+  },
+  {
+    "orderId": "BK-1002",
+    "customerId": "cust_ava",
+    "itemTitle": "The Hobbit - Deluxe Hardcover Edition",
+    "sku": "HOBBIT-DELUXE-HC",
+    "trackingNumber": "1ZBOOKLY1002",
+    "deliveryZip": "60614",
+    "placedAt": "2026-05-03",
+    "orderValue": 48,
+    "riskFlags": [],
+    "inventoryProfile": "hobbit_substitute_only"
+  },
+  {
+    "orderId": "BK-1003",
+    "customerId": "cust_ava",
+    "itemTitle": "Dune - Collector's Edition",
+    "sku": "DUNE-COLLECTOR-HC",
+    "trackingNumber": "1ZBOOKLY1003",
+    "deliveryZip": "60614",
+    "placedAt": "2026-05-01",
+    "orderValue": 85,
+    "riskFlags": [],
+    "inventoryProfile": "dune_no_deadline_option"
+  },
+  {
+    "orderId": "BK-1004",
+    "customerId": "cust_ava",
+    "itemTitle": "Foundation - Paperback",
+    "sku": "FOUNDATION-PB",
+    "trackingNumber": "1ZBOOKLY1004",
+    "deliveryZip": "60614",
+    "placedAt": "2026-05-04",
+    "orderValue": 16,
+    "riskFlags": [],
+    "inventoryProfile": "foundation_available"
+  },
+  {
+    "orderId": "BK-2001",
+    "customerId": "cust_sam",
+    "itemTitle": "Project Hail Mary - Paperback",
+    "sku": "PROJECT-HAIL-MARY-PB",
+    "trackingNumber": "1ZBOOKLY2001",
+    "deliveryZip": "94110",
+    "placedAt": "2026-04-20",
+    "deliveredAt": "2026-04-25",
+    "orderValue": 18,
+    "riskFlags": []
+  },
+  {
+    "orderId": "BK-2002",
+    "customerId": "cust_sam",
+    "itemTitle": "The Martian - Hardcover",
+    "sku": "MARTIAN-HC",
+    "trackingNumber": "1ZBOOKLY2002",
+    "deliveryZip": "94110",
+    "placedAt": "2026-03-10",
+    "deliveredAt": "2026-03-16",
+    "orderValue": 32,
+    "riskFlags": []
+  },
+  {
+    "orderId": "BK-2003",
+    "customerId": "cust_sam",
+    "itemTitle": "Old Man's War - Paperback",
+    "sku": "OLD-MANS-WAR-PB",
+    "trackingNumber": "1ZBOOKLY2003",
+    "deliveryZip": "94110",
+    "placedAt": "2025-03-25",
+    "deliveredAt": "2025-04-01",
+    "orderValue": 14,
+    "riskFlags": []
+  },
+  {
+    "orderId": "BK-2004",
+    "customerId": "cust_sam",
+    "itemTitle": "Leviathan Wakes - Paperback",
+    "sku": "LEVIATHAN-WAKES-PB",
+    "trackingNumber": "1ZBOOKLY2004",
+    "deliveryZip": "94110",
+    "placedAt": "2026-05-04",
+    "orderValue": 17,
+    "riskFlags": []
+  },
+  {
+    "orderId": "BK-3001",
+    "customerId": "cust_jordan",
+    "itemTitle": "The Left Hand of Darkness - Signed First Edition",
+    "sku": "LEFT-HAND-SIGNED",
+    "trackingNumber": "1ZBOOKLY3001",
+    "deliveryZip": "10003",
+    "placedAt": "2026-04-10",
+    "deliveredAt": "2026-04-15",
+    "orderValue": 425,
+    "riskFlags": ["high_value_item", "signed_collectible", "manual_review_required"]
+  }
+]

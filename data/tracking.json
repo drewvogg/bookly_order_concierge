@@ -1,0 +1,92 @@
+[
+  {
+    "trackingNumber": "1ZBOOKLY1001",
+    "carrier": "BooklyShip",
+    "status": "exception",
+    "statusDetail": "Carrier exception after a missed transfer scan.",
+    "lastScanAt": "2026-05-02T08:00:00-07:00",
+    "estimatedDelivery": null,
+    "guaranteedDelivery": false,
+    "hoursSinceLastScan": 60
+  },
+  {
+    "trackingNumber": "1ZBOOKLY1002",
+    "carrier": "BooklyShip",
+    "status": "no_recent_scan",
+    "statusDetail": "No recovery scan since the package missed its Chicago transfer.",
+    "lastScanAt": "2026-05-02T00:00:00-07:00",
+    "estimatedDelivery": null,
+    "guaranteedDelivery": false,
+    "hoursSinceLastScan": 72
+  },
+  {
+    "trackingNumber": "1ZBOOKLY1003",
+    "carrier": "BooklyShip",
+    "status": "exception",
+    "statusDetail": "Carrier exception with no available recovery ETA.",
+    "lastScanAt": "2026-05-01T16:00:00-07:00",
+    "estimatedDelivery": null,
+    "guaranteedDelivery": false,
+    "hoursSinceLastScan": 80
+  },
+  {
+    "trackingNumber": "1ZBOOKLY1004",
+    "carrier": "BooklyShip",
+    "status": "no_recent_scan",
+    "statusDetail": "Package is in transit, but the latest scan is only a few hours old.",
+    "lastScanAt": "2026-05-04T20:00:00-07:00",
+    "estimatedDelivery": "2026-05-07",
+    "guaranteedDelivery": false,
+    "hoursSinceLastScan": 8
+  },
+  {
+    "trackingNumber": "1ZBOOKLY2001",
+    "carrier": "BooklyShip",
+    "status": "delivered",
+    "statusDetail": "Delivered to mailbox.",
+    "lastScanAt": "2026-04-25T12:30:00-07:00",
+    "estimatedDelivery": "2026-04-25",
+    "guaranteedDelivery": false,
+    "hoursSinceLastScan": 240
+  },
+  {
+    "trackingNumber": "1ZBOOKLY2002",
+    "carrier": "BooklyShip",
+    "status": "delivered",
+    "statusDetail": "Delivered to front door.",
+    "lastScanAt": "2026-03-16T15:10:00-07:00",
+    "estimatedDelivery": "2026-03-16",
+    "guaranteedDelivery": false,
+    "hoursSinceLastScan": 1200
+  },
+  {
+    "trackingNumber": "1ZBOOKLY2003",
+    "carrier": "BooklyShip",
+    "status": "delivered",
+    "statusDetail": "Delivered.",
+    "lastScanAt": "2025-04-01T13:00:00-07:00",
+    "estimatedDelivery": "2025-04-01",
+    "guaranteedDelivery": false,
+    "hoursSinceLastScan": 9600
+  },
+  {
+    "trackingNumber": "1ZBOOKLY2004",
+    "carrier": "BooklyShip",
+    "status": "in_transit",
+    "statusDetail": "Package is still moving through the carrier network.",
+    "lastScanAt": "2026-05-05T06:30:00-07:00",
+    "estimatedDelivery": "2026-05-07",
+    "guaranteedDelivery": false,
+    "hoursSinceLastScan": 3
+  },
+  {
+    "trackingNumber": "1ZBOOKLY3001",
+    "carrier": "BooklyShip",
+    "status": "delivered",
+    "statusDetail": "Delivered with signature confirmation.",
+    "lastScanAt": "2026-04-15T14:15:00-07:00",
+    "estimatedDelivery": "2026-04-15",
+    "guaranteedDelivery": false,
+    "hoursSinceLastScan": 480
+  }
+]

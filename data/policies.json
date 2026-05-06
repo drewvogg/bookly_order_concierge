@@ -1,0 +1,25 @@
+{
+  "returnWindowDays": 30,
+  "lostPackageMinimumHoursWithoutScan": 48,
+  "manualReviewOrderValueThreshold": 200,
+  "returnRequiresOriginalCondition": true,
+  "replacementRequiresCustomerConfirmation": true,
+  "substituteRequiresExplicitApproval": true,
+  "neverGuaranteeDeliveryUnlessToolSaysGuaranteed": true,
+  "customerSignalEscalationThreshold": 2,
+  "customerFrustrationEscalationSignals": [
+    "angry",
+    "upset",
+    "frustrated",
+    "unacceptable",
+    "ridiculous",
+    "speak to someone",
+    "talk to a person",
+    "human"
+  ],
+  "manualReviewFlags": [
+    "high_value_item",
+    "signed_collectible",
+    "manual_review_required"
+  ]
+}
