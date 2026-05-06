@@ -1,0 +1,77 @@
+{
+  "profiles": {
+    "hobbit_same_available": {
+      "sameItemOption": {
+        "available": true,
+        "sku": "HOBBIT-DELUXE-HC",
+        "title": "The Hobbit - Deluxe Hardcover Edition",
+        "inventoryLocations": [
+          {
+            "locationId": "chi-fulfillment",
+            "name": "Chicago Fulfillment Center",
+            "quantity": 2
+          }
+        ]
+      },
+      "substituteOptions": []
+    },
+    "hobbit_substitute_only": {
+      "sameItemOption": {
+        "available": false,
+        "sku": "HOBBIT-DELUXE-HC",
+        "title": "The Hobbit - Deluxe Hardcover Edition",
+        "inventoryLocations": []
+      },
+      "substituteOptions": [
+        {
+          "sku": "HOBBIT-PAPERBACK",
+          "title": "The Hobbit - Paperback Edition",
+          "substitutionReason": "Same book, different format",
+          "requiresCustomerApproval": true,
+          "inventoryLocations": [
+            {
+              "locationId": "mke-fulfillment",
+              "name": "Milwaukee Fulfillment Center",
+              "quantity": 6
+            },
+            {
+              "locationId": "stl-fulfillment",
+              "name": "St. Louis Fulfillment Center",
+              "quantity": 4
+            }
+          ]
+        }
+      ]
+    },
+    "dune_no_deadline_option": {
+      "sameItemOption": {
+        "available": true,
+        "sku": "DUNE-COLLECTOR-HC",
+        "title": "Dune - Collector's Edition",
+        "inventoryLocations": [
+          {
+            "locationId": "den-fulfillment",
+            "name": "Denver Fulfillment Center",
+            "quantity": 1
+          }
+        ]
+      },
+      "substituteOptions": []
+    },
+    "foundation_available": {
+      "sameItemOption": {
+        "available": true,
+        "sku": "FOUNDATION-PB",
+        "title": "Foundation - Paperback",
+        "inventoryLocations": [
+          {
+            "locationId": "chi-fulfillment",
+            "name": "Chicago Fulfillment Center",
+            "quantity": 8
+          }
+        ]
+      },
+      "substituteOptions": []
+    }
+  }
+}

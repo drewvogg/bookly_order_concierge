@@ -1,0 +1,26 @@
+[
+  {
+    "customerId": "cust_ava",
+    "name": "Ava Morgan",
+    "email": "ava.morgan@example.com",
+    "zipCode": "60614",
+    "maskedAddress": "address ending in 60614",
+    "returnAddress": "Ava Morgan, 2048 N Orchard St, Chicago, IL 60614"
+  },
+  {
+    "customerId": "cust_sam",
+    "name": "Sam Rivera",
+    "email": "sam.rivera@example.com",
+    "zipCode": "94110",
+    "maskedAddress": "address ending in 94110",
+    "returnAddress": "Sam Rivera, 512 Valencia St, San Francisco, CA 94110"
+  },
+  {
+    "customerId": "cust_jordan",
+    "name": "Jordan Lee",
+    "email": "jordan.lee@example.com",
+    "zipCode": "10003",
+    "maskedAddress": "address ending in 10003",
+    "returnAddress": "Jordan Lee, 88 E 10th St, New York, NY 10003"
+  }
+]

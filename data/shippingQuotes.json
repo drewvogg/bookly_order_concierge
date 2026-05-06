@@ -1,0 +1,42 @@
+[
+  {
+    "sku": "HOBBIT-DELUXE-HC",
+    "zipCode": "60614",
+    "locationId": "chi-fulfillment",
+    "carrier": "BooklyShip",
+    "estimatedDelivery": "2026-05-06",
+    "guaranteedDelivery": false
+  },
+  {
+    "sku": "HOBBIT-PAPERBACK",
+    "zipCode": "60614",
+    "locationId": "mke-fulfillment",
+    "carrier": "BooklyShip",
+    "estimatedDelivery": "2026-05-06",
+    "guaranteedDelivery": false
+  },
+  {
+    "sku": "HOBBIT-PAPERBACK",
+    "zipCode": "60614",
+    "locationId": "stl-fulfillment",
+    "carrier": "BooklyShip",
+    "estimatedDelivery": "2026-05-07",
+    "guaranteedDelivery": false
+  },
+  {
+    "sku": "DUNE-COLLECTOR-HC",
+    "zipCode": "60614",
+    "locationId": "den-fulfillment",
+    "carrier": "BooklyShip",
+    "estimatedDelivery": "2026-05-09",
+    "guaranteedDelivery": false
+  },
+  {
+    "sku": "FOUNDATION-PB",
+    "zipCode": "60614",
+    "locationId": "chi-fulfillment",
+    "carrier": "BooklyShip",
+    "estimatedDelivery": "2026-05-06",
+    "guaranteedDelivery": false
+  }
+]
