@@ -172,6 +172,14 @@ function isActionTool(toolName: ToolName) {
   return toolName === "createReplacementOrder" || toolName === "createReturnLabel" || toolName === "createSupportTicket";
 }
 
+function shouldRenderWithModel(step: AgentStep) {
+  if (process.env.LLM_MODE !== "live" || step.type !== "respond") {
+    return false;
+  }
+
+  return /\b(standard shipping|password resets|special circumstances|support review)\b/i.test(step.message);
+}
+
 async function renderAssistantContent(input: {
   modelClient: ModelClient;
   userMessage: string;
@@ -181,6 +189,16 @@ async function renderAssistantContent(input: {
 }) {
   if (input.step.type === "tool_call") {
     throw new Error("Tool call steps are not customer-facing messages.");
+  }
+
+  if (!shouldRenderWithModel(input.step)) {
+    logAgentEvent("response.done", {
+      turnId: input.turnId,
+      stepType: input.step.type,
+      renderMode: "template",
+      durationMs: 0
+    });
+    return input.step.message;
   }
 
   const startedAt = Date.now();
@@ -193,6 +211,7 @@ async function renderAssistantContent(input: {
   logAgentEvent("response.done", {
     turnId: input.turnId,
     stepType: input.step.type,
+    renderMode: "llm",
     durationMs: Date.now() - startedAt
   });
   return message;

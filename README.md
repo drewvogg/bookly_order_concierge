@@ -10,10 +10,10 @@ The point of the demo is the agent runtime: a chat UI calls `/api/chat`, a model
 Chat UI -> /api/chat -> Agent Orchestrator
   -> ModelClient extraction -> WorkflowPlanner
   -> Tool Registry -> Bookly repositories/mock systems
-  -> Policy Evaluator -> Response renderer -> Trace
+  -> Policy Evaluator -> Response router/renderer -> Trace
 ```
 
-`LLM_MODE=demo` uses deterministic extraction and response templates. `LLM_MODE=live` uses the OpenAI SDK twice per user-facing turn: once to extract intent, fields, confirmation, and sentiment/tone signals, and once to render the planner-selected response. Both modes use the same `WorkflowPlanner`, tools, policies, confirmation gates, and trace events. Live mode defaults to `gpt-5-nano`; set `OPENAI_MODEL` to use a different model available in your OpenAI account.
+`LLM_MODE=demo` uses deterministic extraction and response templates. `LLM_MODE=live` uses the OpenAI SDK to extract intent, fields, confirmation, and sentiment/tone signals; most customer-facing responses come from planner templates so IDs, order details, confirmations, and policy outcomes stay exact. The LLM is reserved for selected open-ended responses where natural wording is useful. Both modes use the same `WorkflowPlanner`, tools, policies, confirmation gates, and trace events. Live mode defaults to `gpt-5-nano`; set `OPENAI_MODEL` to use a different model available in your OpenAI account.
 
 ## Run Locally
 
@@ -26,7 +26,9 @@ npm run dev
 
 Open `http://localhost:3000`.
 
-The dev server logs each turn to the terminal with extraction results, planner steps, tool calls, response-render timing, and total duration. This is useful when testing Live Mode latency or checking which intent/sentiment signals the model extracted.
+The dev server logs each turn to the terminal with extraction results, planner steps, tool calls, response render mode/timing, and total duration. This is useful when testing Live Mode latency or checking which intent/sentiment signals the model extracted.
+
+Live Mode routes responses for speed and reliability. Operational messages such as identity questions, order disambiguation, confirmation gates, policy outcomes, and created action IDs/links use planner templates. Those responses need exact wording and should not pay for a second model call. The LLM is used for extraction on each turn and for selected open-ended responses where natural wording is worth the latency.
 
 Live mode:
 
@@ -45,7 +47,7 @@ OPENAI_API_KEY=
 OPENAI_MODEL=gpt-5-nano
 ```
 
-- `LLM_MODE`: `demo` runs deterministic extraction and response templates; `live` calls the OpenAI API for extraction and response rendering.
+- `LLM_MODE`: `demo` runs deterministic extraction and response templates; `live` calls the OpenAI API for extraction and selected response rendering.
 - `OPENAI_API_KEY`: required only when `LLM_MODE=live`.
 - `OPENAI_MODEL`: optional live-mode override. The repo defaults to `gpt-5-nano` when this is unset.
 
@@ -75,7 +77,7 @@ The prototype is scoped to representative support branches rather than exhaustiv
 
 ## Demo Scripts
 
-These scripts suggest the shape of messages that exercise the deterministic workflow planner. You do not need to copy them exactly, but staying close to the order identity, deadline, and confirmation structure keeps the demo predictable. Live mode uses the same planner and tools; the model extracts fuzzy language and writes the final response, but code chooses the workflow step.
+These scripts suggest the shape of messages that exercise the deterministic workflow planner. You do not need to copy them exactly, but staying close to the order identity, deadline, and confirmation structure keeps the demo predictable. Live mode uses the same planner and tools; the model extracts fuzzy language, but code chooses the workflow step and templates most operational responses.
 
 ### Scenario 1: delayed gift, ambiguous order, substitute replacement
 
@@ -185,7 +187,7 @@ Expected behavior:
 
 ## Tradeoffs
 
-Bookly systems are mocked with JSON for demo reliability and easy deployment. The runtime boundaries are intentionally real: repositories, tools, policy evaluator, model client, workflow planner, response renderer, and orchestrator can be swapped to production integrations later. Created replacement orders and return labels have small in-memory duplicate protection for repeated demo actions; production would use persisted idempotency keys, audit logs, retries, and human handoff queues.
+Bookly systems are mocked with JSON for demo reliability and easy deployment. The runtime boundaries are intentionally real: repositories, tools, policy evaluator, model client, workflow planner, response router/renderer, and orchestrator can be swapped to production integrations later. Created replacement orders and return labels have small in-memory duplicate protection for repeated demo actions; production would use persisted idempotency keys, audit logs, retries, and human handoff queues.
 
 Demo Mode is the deterministic reference path. Live Mode is more natural-language-flexible, but not more authoritative: the model extracts workflow fields and customer sentiment/tone signals, then the shared planner decides the next legal step. This avoids the main failure mode of prompt-only agents, where a generic LLM can mis-sequence tools or misread policy. A production system would further harden extraction with provider-enforced structured outputs, evals for extraction quality and planner transitions, richer human-handoff policy, and real system integrations.
 
