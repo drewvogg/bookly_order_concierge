@@ -113,7 +113,7 @@ Manual-review cases should use neutral language. The agent should not accuse cus
 
 ## 8. Live LLM vs Demo Mode
 
-Demo Mode is deterministic so the take-home recording and reviewer walkthrough stay stable. It also lets reviewers run the app without an API key. Demo Mode is not meant to pretend to be the LLM; it is a deterministic model-client implementation that exercises the same orchestrator, tools, policy evaluator, trace panel, and action code.
+Demo Mode is deterministic so the demo recording and reviewer walkthrough stay stable. It also lets reviewers run the app without an API key. Demo Mode is not meant to pretend to be the LLM; it is a deterministic model-client implementation that exercises the same orchestrator, tools, policy evaluator, trace panel, and action code.
 
 Live Mode uses the same orchestrator, planner, tools, policy evaluator, and confirmation gates:
 
@@ -127,7 +127,7 @@ Default live model: `gpt-5-nano`, chosen because this demo needs low latency for
 
 ## 9. What Production Would Tighten In Live Mode
 
-The current Live Mode is acceptable for a take-home because it demonstrates API calling, structured extraction, shared workflow planning, policy grounding, response routing, and orchestration. In production, the Live Mode implementation should be hardened in several ways:
+The current Live Mode is acceptable for a demo because it demonstrates API calling, structured extraction, shared workflow planning, policy grounding, response routing, and orchestration. In production, the Live Mode implementation should be hardened in several ways:
 
 ### Structured outputs with a strict schema
 
@@ -206,7 +206,7 @@ The current store uses process memory via `globalThis`. That is acceptable for a
 
 Production would replace JSON with real OMS, carrier, inventory, CRM, ticketing, and returns APIs. Identity would use authenticated sessions, OTP/email verification, and least-privilege account scopes. Actions would use persisted idempotency keys, audit logs, retries, timeouts, rate limits, policy versioning, and human handoff queues. Evaluation would include regression tests for tool sequencing, policy decisions, escalation language, confirmation handling, and refusal to invent guarantees or substitute products.
 
-The live model client currently uses Chat Completions for JSON extraction and selected generated responses because it was fast to wire for the take-home. A production agent should move to provider-enforced structured outputs, stronger extraction schemas, richer planner state, and an eval suite for extraction quality, state transitions, escalation thresholds, and response safety.
+The live model client currently uses Chat Completions for JSON extraction and selected generated responses because it was fast to wire for the demo. A production agent should move to provider-enforced structured outputs, stronger extraction schemas, richer planner state, and an eval suite for extraction quality, state transitions, escalation thresholds, and response safety.
 
 ## 15. Design Doc Compression Notes
 
