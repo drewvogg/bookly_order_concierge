@@ -2,18 +2,27 @@
 
 Bookly Order Concierge is a demo AI customer support agent for Bookly, a fictional online bookstore. It focuses on order status, delayed delivery rescue, replacements, returns, generated PDF return labels, and support escalation.
 
-The point of the demo is the agent runtime: a chat UI calls `/api/chat`, a model client extracts workflow updates, a deterministic `WorkflowPlanner` chooses the next legal step, tools query mocked Bookly systems, policy code decides eligibility, and the UI shows a structured trace of every customer signal, tool call, shipping quote, policy check, confirmation gate, and action.
+The core design choice is a hybrid runtime: Live Mode uses an LLM for natural-language extraction, while deterministic workflow code controls tool order, policy decisions, confirmation gates, and customer-impacting actions. The UI shows a structured Agent Trace for every customer signal, tool call, shipping quote, policy check, confirmation gate, and action.
 
-## Architecture
+## Quick Review Path
+
+For the fastest review, use the hosted Live Mode demo: [https://bookly-order-concierge.vercel.app/](https://bookly-order-concierge.vercel.app/).
+
+Try this first:
 
 ```txt
-Chat UI -> /api/chat -> Agent Orchestrator
-  -> ModelClient extraction -> WorkflowPlanner
-  -> Tool Registry -> Bookly repositories/mock systems
-  -> Policy Evaluator -> Response router/renderer -> Trace
+My order still hasn't arrived and it's supposed to be a birthday gift for tomorrow. Can you help?
+It's ava.morgan@example.com, ZIP 60614. I think it was The Hobbit.
+BK-1002
+Paperback is fine if it can get here tomorrow.
+Yes, send it to the same address.
 ```
 
-`LLM_MODE=demo` uses deterministic extraction and response templates. `LLM_MODE=live` uses the OpenAI SDK to extract intent, fields, confirmation, and sentiment/tone signals; most customer-facing responses come from planner templates so IDs, order details, confirmations, and policy outcomes stay exact. The LLM is reserved for selected open-ended responses where natural wording is useful. Both modes use the same `WorkflowPlanner`, tools, policies, confirmation gates, and trace events. Live mode defaults to `gpt-5-nano`; set `OPENAI_MODEL` to use a different model available in your OpenAI account.
+This path demonstrates multi-turn collection, order disambiguation, tool use, policy checks, substitute replacement, confirmation gates, and action creation. Watch the Agent Trace panel as each step runs.
+
+Use the local setup below only if you want to inspect terminal logs, run Demo Mode without OpenAI, or modify the code.
+
+Live Mode is the best way to evaluate natural-language flexibility. Demo Mode is the deterministic no-key fallback for repeatable review.
 
 ## Run Locally
 
@@ -24,17 +33,9 @@ npm install
 npm run dev
 ```
 
-Open `http://localhost:3000`.
+Open `http://localhost:3000`. Local default mode is Demo Mode and does not require an OpenAI API key.
 
-## Hosted Demo
-
-A deployed Live Mode demo is available at `https://bookly-order-concierge.vercel.app/` for reviewers who want to try the agent without setting up a local OpenAI API key.
-
-The dev server logs each turn to the terminal with extraction results, planner steps, tool calls, response render mode/timing, and total duration. This is useful when testing Live Mode latency or checking which intent/sentiment signals the model extracted.
-
-Live Mode routes responses for speed and reliability. Operational messages such as identity questions, order disambiguation, confirmation gates, policy outcomes, and created action IDs/links use planner templates. Those responses need exact wording and should not pay for a second model call. The LLM is used for extraction on each turn and for selected open-ended responses where natural wording is worth the latency.
-
-Live mode:
+Live Mode locally:
 
 ```bash
 cp .env.example .env.local
@@ -43,45 +44,9 @@ cp .env.example .env.local
 npm run dev:live
 ```
 
-## Environment
+## Recommended Demo Scripts
 
-```txt
-LLM_MODE=demo
-OPENAI_API_KEY=
-OPENAI_MODEL=gpt-5-nano
-```
-
-- `LLM_MODE`: `demo` runs deterministic extraction and response templates; `live` calls the OpenAI API for extraction and selected response rendering.
-- `OPENAI_API_KEY`: required only when `LLM_MODE=live`.
-- `OPENAI_MODEL`: optional live-mode override. The repo defaults to `gpt-5-nano` when this is unset.
-
-## Demo Assumptions
-
-The seeded data and `DEMO_TODAY` constant are part of the demo contract. They pin dates, return windows, tracking age, replacement availability, and shipping quote outcomes so the scripts below produce stable results. Changing `data/*.json` or `DEMO_TODAY` can intentionally change the demo branches. The AOP markdown in `data/aops/*.md` documents policy intent for reviewers, but runtime policy decisions come from `lib/policies/evaluatePolicy.ts`.
-
-The JSON files work together:
-
-- `orders.json` links customers to orders, tracking numbers, delivery dates, values, risk flags, and inventory profiles.
-- `tracking.json` simulates carrier state and last-scan age.
-- `inventory.json` stores stock locations only; it does not store delivery promises.
-- `shippingQuotes.json` is the mocked carrier quote source used to calculate fastest replacement delivery and deadline fit.
-- `policies.json` stores thresholds and policy flags used by `evaluatePolicy`.
-
-## Seeded Scenario Map
-
-The seed data is intentionally scenario-driven. The recommended scripts below are the fastest way to evaluate the intended workflows. For a fuller breakdown of each seeded customer/order and the policy branch it exercises, see [`docs/demo-scenarios.md`](docs/demo-scenarios.md).
-
-| Customer | Key orders | Primary workflow |
-|---|---|---|
-| Ava Morgan | `BK-1001`–`BK-1004` | Delayed/lost package replacement scenarios: same-item replacement, substitute replacement, no viable replacement, and package-not-missing-long-enough |
-| Sam Rivera | `BK-2001`–`BK-2004` | Return scenarios: eligible return label, outside-window exception, very old order filtering, and return before delivery |
-| Jordan Lee | `BK-3001` | High-value/signed collectible order requiring manual review |
-
-The prototype is scoped to representative support branches rather than exhaustive OMS behavior. Other combinations may work, but the scripts below are the recommended review path. Testing every possible seeded-data combination may produce behavior that would need broader production logic, stricter state enforcement, or additional policy branches.
-
-## Demo Scripts
-
-These scripts suggest the shape of messages that exercise the deterministic workflow planner. You do not need to copy them exactly, but staying close to the order identity, deadline, and confirmation structure keeps the demo predictable. Live mode uses the same planner and tools; the model extracts fuzzy language, but code chooses the workflow step and templates most operational responses.
+These are the intended review paths. The agent can handle variations, especially in Live Mode, but these scripts exercise the key branches reliably and are the best way to evaluate the design quickly.
 
 ### Scenario 1: delayed gift, ambiguous order, substitute replacement
 
@@ -174,6 +139,85 @@ Expected behavior:
 - Agent explains a standard self-service return label is unavailable before delivery.
 - Agent offers support review instead.
 
+### Scenario 7: typo recovery and order disambiguation
+
+```txt
+Where is my order?
+avamorgan@example.com, zip code 60614
+Sorry, the email is actually ava.morgan@example.com
+BK-1002
+```
+
+Expected behavior:
+
+- Agent cannot find an order for the mistyped email and asks the customer to double-check details.
+- Agent recovers after the corrected email and lists Ava's matching orders.
+- Agent uses the selected order number to look up tracking status.
+
+### Scenario 8: human-help escalation with multiple matching orders
+
+```txt
+Where is my order?
+ava.morgan@example.com, zip code 60614
+I want human help.
+Human support now, please.
+```
+
+Expected behavior:
+
+- Agent lists matching orders after account lookup.
+- Agent asks once for the order number so the ticket can be routed correctly.
+- If the customer keeps asking for human support instead of selecting an order, the agent offers an account-level support ticket.
+
+## Seeded Scenario Map
+
+The seed data is intentionally scenario-driven. The recommended scripts above are the fastest way to evaluate the intended workflows. For a fuller breakdown of each seeded customer/order and the policy branch it exercises, see [`docs/demo-scenarios.md`](docs/demo-scenarios.md).
+
+| Customer | Key orders | Primary workflow |
+|---|---|---|
+| Ava Morgan | `BK-1001` through `BK-1004` | Delayed/lost package replacement scenarios: same-item replacement, substitute replacement, no viable replacement, and package-not-missing-long-enough |
+| Sam Rivera | `BK-2001` through `BK-2004` | Return scenarios: eligible return label, outside-window exception, very old order filtering, and return before delivery |
+| Jordan Lee | `BK-3001` | High-value/signed collectible order requiring manual review |
+
+The prototype is scoped to representative support branches rather than exhaustive OMS behavior. Other combinations may work, but the scripts above are the recommended review path. Testing every possible seeded-data combination may produce behavior that would need broader production logic, stricter state enforcement, or additional policy branches.
+
+## Architecture
+
+```txt
+Chat UI -> /api/chat -> Agent Orchestrator
+  -> ModelClient extraction -> WorkflowPlanner
+  -> Tool Registry -> Bookly repositories/mock systems
+  -> Policy Evaluator -> Response router/renderer -> Trace
+```
+
+`LLM_MODE=demo` uses deterministic extraction and response templates. `LLM_MODE=live` uses the OpenAI SDK to extract intent, fields, confirmation, and sentiment/tone signals; most customer-facing responses come from planner templates so IDs, order details, confirmations, and policy outcomes stay exact. The LLM is reserved for selected open-ended responses where natural wording is useful. Both modes use the same `WorkflowPlanner`, tools, policies, confirmation gates, and trace events. Live mode defaults to `gpt-5-nano`; set `OPENAI_MODEL` to use a different model available in your OpenAI account.
+
+The dev server logs each turn to the terminal with extraction results, planner steps, tool calls, response render mode/timing, and total duration. This is useful when testing Live Mode latency or checking which intent/sentiment signals the model extracted.
+
+Live Mode routes responses for speed and reliability. Operational messages such as identity questions, order disambiguation, confirmation gates, policy outcomes, and created action IDs/links use planner templates. Those responses need exact wording and should not pay for a second model call. The LLM is used for extraction on each turn and for selected open-ended responses where natural wording is worth the latency.
+
+## Environment
+
+```txt
+LLM_MODE=demo
+OPENAI_API_KEY=
+OPENAI_MODEL=gpt-5-nano
+```
+
+- `LLM_MODE`: `demo` runs deterministic extraction and response templates; `live` calls the OpenAI API for extraction and selected response rendering.
+- `OPENAI_API_KEY`: required only when `LLM_MODE=live`.
+- `OPENAI_MODEL`: optional live-mode override. The repo defaults to `gpt-5-nano` when this is unset.
+
+The seeded data and `DEMO_TODAY` constant are part of the demo contract. They pin dates, return windows, tracking age, replacement availability, and shipping quote outcomes so the scripts above produce stable results. Changing `data/*.json` or `DEMO_TODAY` can intentionally change the demo branches. The AOP markdown in `data/aops/*.md` documents policy intent for reviewers, but runtime policy decisions come from `lib/policies/evaluatePolicy.ts`.
+
+The JSON files work together:
+
+- `orders.json` links customers to orders, tracking numbers, delivery dates, values, risk flags, and inventory profiles.
+- `tracking.json` simulates carrier state and last-scan age.
+- `inventory.json` stores stock locations only; it does not store delivery promises.
+- `shippingQuotes.json` is the mocked carrier quote source used to calculate fastest replacement delivery and deadline fit.
+- `policies.json` stores thresholds and policy flags used by `evaluatePolicy`.
+
 ## Guardrails
 
 - No order-specific claims before `lookupOrder`.
@@ -196,6 +240,6 @@ Expected behavior:
 
 Bookly systems are mocked with JSON for demo reliability and easy deployment. The runtime boundaries are intentionally real: repositories, tools, policy evaluator, model client, workflow planner, response router/renderer, and orchestrator can be swapped to production integrations later. Created replacement orders and return labels have small in-memory duplicate protection for repeated demo actions; production would use persisted idempotency keys, audit logs, retries, and human handoff queues.
 
-Demo Mode is the deterministic reference path. Live Mode is more natural-language-flexible, but not more authoritative: the model extracts workflow fields and customer sentiment/tone signals, then the shared planner decides the next legal step. This avoids the main failure mode of prompt-only agents, where a generic LLM can mis-sequence tools or misread policy. A production system would further harden extraction with provider-enforced structured outputs, evals for extraction quality and planner transitions, richer human-handoff policy, and real system integrations.
+Live Mode is more natural-language-flexible, but not more authoritative: the model extracts workflow fields and customer sentiment/tone signals, then the shared planner decides the next legal step. This avoids the main failure mode of prompt-only agents, where a generic LLM can mis-sequence tools or misread policy. A production system would further harden extraction with provider-enforced structured outputs, evals for extraction quality and planner transitions, richer human-handoff policy, and real system integrations.
 
 See [docs/design-doc-notes.md](docs/design-doc-notes.md) for expanded design-document source notes.
