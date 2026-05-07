@@ -134,17 +134,10 @@ export const booklyRepository = {
     return order ? toSafeOrder(order) : undefined;
   },
 
-  searchOrders(input: {
-    orderId?: string;
-    email?: string;
-    zipCode?: string;
-    itemHint?: string;
-    undeliveredOnly?: boolean;
-  }): SafeOrder[] {
+  searchOrders(input: { orderId?: string; email?: string; zipCode?: string; itemHint?: string }): SafeOrder[] {
     if (input.orderId) {
       const order = this.getOrder(input.orderId);
       if (!order) return [];
-      if (input.undeliveredOnly && order.deliveredAt) return [];
 
       if (input.email || input.zipCode) {
         const customer = getCustomerById(order.customerId);
@@ -160,9 +153,7 @@ export const booklyRepository = {
     if (!customer) return [];
 
     const itemHint = normalize(input.itemHint);
-    const customerOrders = ordersSeed.filter(
-      (order) => order.customerId === customer.customerId && (!input.undeliveredOnly || !order.deliveredAt)
-    );
+    const customerOrders = ordersSeed.filter((order) => order.customerId === customer.customerId);
 
     if (itemHint) {
       const scored = customerOrders

@@ -41,7 +41,7 @@ The loop is: extract workflow updates, update state, let `WorkflowPlanner` choos
 
 Primary required fields:
 
-- Order identity: order number, or email plus zip code. Book title is optional disambiguation context for any lookup, not an identity method. Delivery-exception lookups scope email/zip matches to undelivered orders so delayed-order flows do not ask customers to choose from already-delivered history.
+- Order identity: order number, or email plus zip code. Book title is optional disambiguation context for any lookup, not an identity method.
 - Item hint or order ID when multiple orders match.
 - Customer deadline for urgent replacement checks.
 - Original-condition confirmation for self-service returns.
@@ -58,7 +58,7 @@ Live extraction also captures sentiment/tone signals:
 - `urgency`: urgent timing pressure.
 - `exception_request`: request for special review or exception.
 
-Fuzzy signals such as frustration and urgency increment `escalationSignalCount`. The demo offers escalation after two fuzzy signals; it does not create a support ticket until the customer confirms. In delivery-exception flows, ordinary deadline language like “tomorrow” is treated as workflow input, not sentiment escalation, unless it is paired with frustration, human-help, or exception language.
+Fuzzy signals such as frustration and urgency increment `escalationSignalCount`. The demo offers escalation after two fuzzy signals; it does not create a support ticket until the customer confirms. In delivery-exception flows, ordinary deadline language like “tomorrow” is treated as workflow input, not sentiment escalation, unless it is paired with frustration, human-help, or exception language. Fuzzy sentiment escalation does not override an available self-service remedy: the planner offers eligible replacements or labels first, then offers support if the customer rejects that path, asks for human help, or no self-service option is available.
 
 ## 5. Replacement Workflow
 
@@ -107,7 +107,7 @@ Escalation is triggered when:
 - The item condition blocks a self-service return.
 - The customer asks for human help, or repeated sentiment/tone signals cross the escalation threshold.
 
-In Live Mode, the LLM extracts sentiment/tone signals but does not decide the escalation action directly. `WorkflowPlanner` tracks `humanHelpRequested`, `exceptionRequested`, and `escalationSignalCount`; human-help requests trigger an escalation offer once an order is known, while frustration/urgency require two fuzzy signals. Demo Mode uses deterministic extraction for the same signal fields.
+In Live Mode, the LLM extracts sentiment/tone signals but does not decide the escalation action directly. `WorkflowPlanner` tracks `humanHelpRequested`, `exceptionRequested`, and `escalationSignalCount`; human-help requests trigger an escalation offer once an order is known, while frustration/urgency require two fuzzy signals and do not preempt an automated remedy that the agent has not offered yet. Demo Mode uses deterministic extraction for the same signal fields.
 
 Manual-review cases should use neutral language. The agent should not accuse customers of fraud. It should say that a request needs support review because of policy, item type, order value, verification state, or special handling requirements.
 

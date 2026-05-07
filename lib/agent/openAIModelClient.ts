@@ -33,6 +33,7 @@ Extraction rules:
 - Order lookup identity supports only orderId, or email plus zipCode. Book title can be itemHint only.
 - Do not set itemHint to generic words like "book", "item", or "order"; omit itemHint unless the user names a specific title or edition.
 - Always classify obvious requests: returns/refunds/labels as return_or_refund; late/missing/stuck delivery or replacement requests as delivery_exception; tracking/status questions as order_status.
+- If a tracking/status question also says the order is late, missed an expected delivery date, is needed by a deadline, or asks what can be done about a delayed package, classify it as delivery_exception rather than order_status.
 - Use ${DEMO_TODAY} as the demo date for relative dates like today/tomorrow.
 - If the user appears to provide a deadline but it cannot be normalized to YYYY-MM-DD, set customerDeadlineParseFailed true.
 - Mark confirmationIntent for short yes/no answers when the previous assistant question was a yes/no or confirmation question.
@@ -179,6 +180,59 @@ function safePlannerStep(step: ResponseRenderInput["step"]) {
   };
 }
 
+function compactRecord(value: unknown, keys: string[]) {
+  const record = asRecord(value);
+  if (!record) {
+    return undefined;
+  }
+
+  return Object.fromEntries(keys.map((key) => [key, record[key]]).filter(([, fieldValue]) => fieldValue !== undefined));
+}
+
+function extractionContext(state: AgentInput["state"]) {
+  const workflowState = state.workflowState;
+  const lastAssistantMessage = [...state.messages].reverse().find((message) => message.role === "assistant");
+  const lastClarifier = [...state.traceEvents]
+    .reverse()
+    .find((event) => event.eventType === "clarifying_question");
+
+  return {
+    workflowState: {
+      intent: workflowState.intent,
+      email: workflowState.email,
+      zipCode: workflowState.zipCode,
+      orderId: workflowState.orderId,
+      itemHint: workflowState.itemHint,
+      customerDeadline: workflowState.customerDeadline,
+      customerDeadlineParseFailed: workflowState.customerDeadlineParseFailed,
+      returnConditionConfirmed: workflowState.returnConditionConfirmed,
+      activeOrder: compactRecord(workflowState.activeOrder, ["orderId", "itemTitle", "placedAt", "deliveredAt"]),
+      orderMatches: Array.isArray(workflowState.orderMatches)
+        ? workflowState.orderMatches
+            .map((match) => compactRecord(match, ["orderId", "itemTitle", "placedAt", "deliveredAt"]))
+            .filter(Boolean)
+        : undefined,
+      trackingStatus: compactRecord(workflowState.trackingStatus, [
+        "status",
+        "statusDetail",
+        "estimatedDelivery",
+        "hoursSinceLastScan"
+      ]),
+      escalationSignalCount: workflowState.escalationSignalCount,
+      humanHelpRequested: workflowState.humanHelpRequested,
+      exceptionRequested: workflowState.exceptionRequested
+    },
+    pendingAction: state.pendingAction
+      ? {
+          type: state.pendingAction.type,
+          description: state.pendingAction.description
+        }
+      : undefined,
+    lastAssistantMessage: lastAssistantMessage?.content,
+    lastMissingFields: lastClarifier?.resultSummary?.replace("Missing: ", "")
+  };
+}
+
 function responseFacts(state: ResponseRenderInput["state"]) {
   const activeOrder = asRecord(state.workflowState.activeOrder);
   const ticket = asRecord(state.workflowState.ticket);
@@ -266,7 +320,7 @@ export class OpenAIModelClient implements ModelClient {
         role: "user",
         content: JSON.stringify({
           latestUserMessage: input.userMessage,
-          conversationState: input.state
+          context: extractionContext(input.state)
         })
       }
     ];
