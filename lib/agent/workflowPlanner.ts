@@ -49,6 +49,10 @@ function hasCompleteOrderLookup(fields: PlannerState) {
   return Boolean(text(fields.orderId) || (text(fields.email) && text(fields.zipCode)));
 }
 
+function hasVerifiedAccountContext(fields: PlannerState) {
+  return Array.isArray(fields.orderMatches) && fields.orderMatches.length > 0;
+}
+
 function orderLookupMissingFields(fields: PlannerState) {
   const missingFields: string[] = [];
 
@@ -454,7 +458,7 @@ function getCustomerSignalEscalation(fields: PlannerState) {
     return {
       issueType: "customer_sentiment_review",
       priority: "high" as const,
-      explanation: "This has enough urgency or frustration signals that a support review is appropriate.",
+      explanation: "I can tell the current support path is not resolving the frustration or urgency here.",
       summary: `Customer sentiment/urgency threshold reached for ${text(getActiveOrder(fields)?.orderId) ?? "this order"}.`
     };
   }
@@ -464,11 +468,6 @@ function getCustomerSignalEscalation(fields: PlannerState) {
 
 function isHumanHelpEscalation(escalation: ReturnType<typeof getCustomerSignalEscalation>) {
   return escalation?.issueType === "customer_requested_human_help";
-}
-
-function isSelfServicePolicyAction(decision: Record<string, unknown> | undefined) {
-  const action = text(decision?.recommendedAction);
-  return action === "offer_same_item_replacement" || action === "offer_substitute_replacement" || action === "create_return_label";
 }
 
 function hasDeliveryResolutionContext(fields: PlannerState) {
@@ -500,9 +499,12 @@ function supportTicketConfirmationStep(input: {
   context?: Record<string, unknown>;
   workflowStateUpdates?: PlannerState;
 }): AgentStep {
+  const scope = input.orderId ? `for ${input.orderId}` : "for this account";
+  const ticketType = input.escalation.priority === "high" ? "an escalated support ticket" : "a support ticket";
+
   return {
     type: "request_confirmation",
-    message: `${input.escalation.explanation} Should I create a support ticket so the team can review ${input.orderId}?`,
+    message: `${input.escalation.explanation} Should I create ${ticketType} ${scope}?`,
     pendingAction: supportTicketAction({
       orderId: input.orderId,
       issueType: input.escalation.issueType,
@@ -632,11 +634,16 @@ export function planNextStep(input: AgentInput & { extraction: WorkflowExtractio
     }
 
     const supportEscalation = getCustomerSignalEscalation(fields);
-    if (activeOrderId && supportEscalation && isHumanHelpEscalation(supportEscalation)) {
+    if (supportEscalation && isHumanHelpEscalation(supportEscalation) && activeOrderId) {
       return supportTicketConfirmationStep({
         orderId: activeOrderId,
         escalation: supportEscalation,
         context: {
+          identity: {
+            email: text(fields.email),
+            zipCode: text(fields.zipCode)
+          },
+          orderMatches: fields.orderMatches,
           customerSignals: {
             humanHelpRequested: fields.humanHelpRequested,
             escalationSignalCount: fields.escalationSignalCount
@@ -644,6 +651,37 @@ export function planNextStep(input: AgentInput & { extraction: WorkflowExtractio
         },
         workflowStateUpdates
       });
+    }
+
+    if (supportEscalation && isHumanHelpEscalation(supportEscalation) && hasVerifiedAccountContext(fields)) {
+      if (fields.humanHelpOrderClarificationAsked === true) {
+        return supportTicketConfirmationStep({
+          escalation: supportEscalation,
+          context: {
+            identity: {
+              email: text(fields.email),
+              zipCode: text(fields.zipCode)
+            },
+            orderMatches: fields.orderMatches,
+            customerSignals: {
+              humanHelpRequested: fields.humanHelpRequested,
+              escalationSignalCount: fields.escalationSignalCount
+            }
+          },
+          workflowStateUpdates
+        });
+      }
+
+      return {
+        type: "ask_clarifying_question",
+        message:
+          "It would help me direct you to the right person if you could confirm which order you are asking about. You can send the order number, or ask for human support again if this is not tied to one order.",
+        missingFields: ["orderId"],
+        workflowStateUpdates: {
+          ...workflowStateUpdates,
+          humanHelpOrderClarificationAsked: true
+        }
+      };
     }
 
     const deliveryStep = deliveryResolutionStep(fields, workflowStateUpdates);
@@ -1049,7 +1087,7 @@ function afterPolicy(fields: PlannerState): AgentStep {
     }
 
     const supportEscalation = getCustomerSignalEscalation(fields);
-    if (supportEscalation && (isHumanHelpEscalation(supportEscalation) || !isSelfServicePolicyAction(decision))) {
+    if (supportEscalation && isHumanHelpEscalation(supportEscalation)) {
       return supportTicketConfirmationStep({
         orderId,
         escalation: supportEscalation,
@@ -1170,16 +1208,9 @@ function afterPolicy(fields: PlannerState): AgentStep {
 
     if (decision.reasonCode === "not_missing_long_enough") {
       return {
-        type: "request_confirmation",
+        type: "respond",
         message:
-          `${decision.customerExplanation} The latest carrier status still shows the package in transit. Should I create a support review ticket for the urgent timing?`,
-        pendingAction: supportTicketAction({
-          orderId,
-          issueType: "delivery_timing_review",
-          priority: "normal",
-          summary: `Customer requested timing review before lost-package threshold for ${orderId}.`,
-          context: { policyDecision: decision }
-        })
+          `${decision.customerExplanation} Please check back after the carrier has gone at least ${booklyRepository.policies.lostPackageMinimumHoursWithoutScan} hours without a meaningful scan.`
       };
     }
 
@@ -1201,6 +1232,20 @@ function afterPolicy(fields: PlannerState): AgentStep {
           context: { policyDecision: decision }
         })
       };
+    }
+
+    if (supportEscalation) {
+      return supportTicketConfirmationStep({
+        orderId,
+        escalation: supportEscalation,
+        context: {
+          policyDecision: decision,
+          customerSignals: {
+            humanHelpRequested: fields.humanHelpRequested,
+            escalationSignalCount: fields.escalationSignalCount
+          }
+        }
+      });
     }
 
     return {
