@@ -133,14 +133,16 @@ Expected behavior:
 
 ```txt
 My Foundation order seems stuck and I need it soon. My email is ava.morgan@example.com and ZIP is 60614.
-Yes, create the support ticket.
+That is unacceptable.
+Seriously? That is ridiculous.
 ```
 
 Expected behavior:
 
 - Agent checks tracking and replacement policy.
 - Agent explains the package has not been without a meaningful scan long enough for automatic replacement.
-- Agent offers support escalation because the customer says timing is urgent.
+- Agent does not offer a ticket on the first policy response just because the customer has timing pressure.
+- Agent offers escalated support only after the policy path has no automated remedy and later frustration/urgency signals cross the threshold, or if the customer explicitly asks for human help.
 
 ### Scenario 5: high-value manual review
 
@@ -179,7 +181,8 @@ Expected behavior:
 - No replacement order or return label without explicit confirmation.
 - No return label unless the item condition requirement is confirmed or the flow escalates.
 - No substitute unless it exists in inventory data and the customer approves it.
-- Human-help requests offer escalation once an order can be tied to the case; fuzzy frustration or urgency signals offer escalation after two signals. Routine delivery-deadline language is treated as workflow input, not sentiment escalation.
+- Human-help requests offer escalation once an order can be tied to the case. If the account is verified but multiple orders match, the agent asks once for the order so it can route the ticket correctly; if the customer keeps asking for human support, it can offer an account-level ticket.
+- Fuzzy frustration or urgency signals offer escalation after two signals only after the current automated remediation path has been exhausted. Routine delivery-deadline language is treated as workflow input, not sentiment escalation.
 - Estimated delivery is never described as guaranteed unless the shipping or tracking tool says so.
 - Address details stay masked; payment data is never exposed.
 - Manual-review cases escalate neutrally without fraud language.
