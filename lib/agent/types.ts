@@ -149,6 +149,13 @@ export type AgentTurnResult = {
   state: ConversationState;
 };
 
+export type ChatStreamEvent =
+  | { type: "mode"; mode: "demo" | "live" }
+  | { type: "progress"; message: string }
+  | { type: "trace_event"; event: TraceEvent }
+  | { type: "final"; mode: "demo" | "live"; state: ConversationState }
+  | { type: "error"; error: string };
+
 export type ResponseRenderInput = {
   userMessage: string;
   state: ConversationState;
