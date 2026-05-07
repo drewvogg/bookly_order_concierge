@@ -181,10 +181,21 @@ h2 {
 }
 
 .typing-indicator {
+  display: grid;
+  gap: 4px;
   white-space: nowrap;
 }
 
+.typing-line {
+  line-height: 1.45;
+}
+
 .typing-ellipsis {
+  display: inline-block;
+  width: 18px;
+}
+
+.typing-static-ellipsis {
   display: inline-block;
   width: 18px;
 }

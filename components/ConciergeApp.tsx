@@ -4,6 +4,13 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import type { KeyboardEvent } from "react";
 import type { ChatMessage, ChatStreamEvent, ConversationState, TraceEvent } from "@/lib/agent/types";
 
+const extractionProgressLines = [
+  "Understanding request",
+  "Mapping request details",
+  "Checking required information",
+  "Preparing next step"
+];
+
 function createInitialState(): ConversationState {
   return {
     conversationId: `client_${Date.now().toString(36)}`,
@@ -99,12 +106,22 @@ function progressText(message: string | null) {
   return (message ?? "Working").replace(/\.+$/, "");
 }
 
+function appendProgressLine(lines: string[], message: string) {
+  const nextLine = progressText(message);
+  if (lines[lines.length - 1] === nextLine) {
+    return lines;
+  }
+
+  return [...lines, nextLine];
+}
+
 export function ConciergeApp({ initialMode = "demo" }: { initialMode?: "demo" | "live" }) {
   const [state, setState] = useState<ConversationState>(() => createInitialState());
   const [draft, setDraft] = useState("");
   const [mode, setMode] = useState<"demo" | "live">(initialMode);
   const [isSending, setIsSending] = useState(false);
-  const [progressMessage, setProgressMessage] = useState<string | null>(null);
+  const [progressLines, setProgressLines] = useState<string[]>([]);
+  const [isExpandingExtractionProgress, setIsExpandingExtractionProgress] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const messageListRef = useRef<HTMLDivElement>(null);
@@ -114,7 +131,7 @@ export function ConciergeApp({ initialMode = "demo" }: { initialMode?: "demo" | 
 
   useEffect(() => {
     scrollToBottom(messageListRef.current);
-  }, [state.messages.length, isSending, progressMessage]);
+  }, [state.messages.length, isSending, progressLines.length]);
 
   useEffect(() => {
     if (!isSending) {
@@ -122,12 +139,32 @@ export function ConciergeApp({ initialMode = "demo" }: { initialMode?: "demo" | 
     }
   }, [isSending]);
 
+  useEffect(() => {
+    if (!isSending || !isExpandingExtractionProgress) {
+      return;
+    }
+
+    let nextLineIndex = 1;
+    const intervalId = window.setInterval(() => {
+      if (nextLineIndex >= extractionProgressLines.length) {
+        return;
+      }
+
+      const nextLine = extractionProgressLines[nextLineIndex];
+      nextLineIndex += 1;
+      setProgressLines((currentLines) => appendProgressLine(currentLines, nextLine));
+    }, 1500);
+
+    return () => window.clearInterval(intervalId);
+  }, [isSending, isExpandingExtractionProgress]);
+
   async function sendMessage(message: string) {
     const requestState = state;
     const optimisticMessage = createOptimisticUserMessage(message);
 
     setIsSending(true);
-    setProgressMessage("Starting...");
+    setProgressLines(["Starting"]);
+    setIsExpandingExtractionProgress(false);
     setError(null);
     setState((currentState) => ({
       ...currentState,
@@ -154,7 +191,12 @@ export function ConciergeApp({ initialMode = "demo" }: { initialMode?: "demo" | 
         }
 
         if (event.type === "progress") {
-          setProgressMessage(event.message);
+          const nextProgressLine = progressText(event.message);
+          setProgressLines((currentLines) => {
+            const linesFromStream = currentLines.length === 1 && currentLines[0] === "Starting" ? [] : currentLines;
+            return appendProgressLine(linesFromStream, nextProgressLine);
+          });
+          setIsExpandingExtractionProgress(nextProgressLine === extractionProgressLines[0]);
           return;
         }
 
@@ -183,7 +225,8 @@ export function ConciergeApp({ initialMode = "demo" }: { initialMode?: "demo" | 
       setDraft((currentDraft) => currentDraft || message);
     } finally {
       setIsSending(false);
-      setProgressMessage(null);
+      setProgressLines([]);
+      setIsExpandingExtractionProgress(false);
       inputRef.current?.focus();
     }
   }
@@ -232,9 +275,17 @@ export function ConciergeApp({ initialMode = "demo" }: { initialMode?: "demo" | 
             <MessageBubble key={message.id} message={message} />
           ))}
           {isSending ? (
-            <div className="typing-indicator">
-              {progressText(progressMessage)}
-              <span className="typing-ellipsis" aria-hidden="true" />
+            <div className="typing-indicator" aria-live="polite">
+              {progressLines.map((line, index) => (
+                <div className="typing-line" key={line}>
+                  {line}
+                  {index === progressLines.length - 1 ? (
+                    <span className="typing-ellipsis" aria-hidden="true" />
+                  ) : (
+                    <span className="typing-static-ellipsis">...</span>
+                  )}
+                </div>
+              ))}
             </div>
           ) : null}
         </div>
