@@ -180,6 +180,48 @@ h2 {
   font-size: 14px;
 }
 
+.typing-indicator {
+  display: grid;
+  gap: 4px;
+  white-space: nowrap;
+}
+
+.typing-line {
+  line-height: 1.45;
+}
+
+.typing-ellipsis {
+  display: inline-block;
+  width: 18px;
+}
+
+.typing-static-ellipsis {
+  display: inline-block;
+  width: 18px;
+}
+
+.typing-ellipsis::after {
+  animation: typingEllipsis 1.2s infinite step-end;
+  content: ".";
+}
+
+@keyframes typingEllipsis {
+  0%,
+  30% {
+    content: ".";
+  }
+
+  31%,
+  65% {
+    content: "..";
+  }
+
+  66%,
+  100% {
+    content: "...";
+  }
+}
+
 .error-banner {
   background: #351c18;
   border-top: 1px solid #734033;
