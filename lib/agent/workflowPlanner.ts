@@ -90,13 +90,13 @@ function orderLookupQuestion(fields: PlannerState, options: { includeItemHint?: 
 
   if (parts.length === 0) {
     return options.noMatch
-      ? "I could not find a verified matching order. Could you check the details you provided?"
+      ? "I could not find a matching order with those details. Please double-check the email, zip code, order number, and book title spelling, or send the order number if you have it."
       : "I have enough order details to look that up.";
   }
 
   const detailList = parts.length === 1 ? parts[0] : `${parts.slice(0, -1).join(", ")} and ${parts.at(-1)}`;
   const prefix = options.noMatch
-    ? "I could not find a verified matching order. Could you check the details provided, or send"
+    ? "I could not find a matching order with those details. Please double-check the email, zip code, order number, and book title spelling, or send"
     : "Sure. Please send";
   const itemHintSentence = needsItem ? " You can also include the book title if you know it." : "";
 
@@ -918,7 +918,7 @@ function afterTool(fields: PlannerState, workflowStateUpdates: PlannerState): Ag
           .join("\n");
         return {
           type: "ask_clarifying_question",
-          message: `I found a few matching orders, sorted by order date:\n${options}\nWhich order should I use?`,
+          message: `I found a few matching orders:\n${options}\nWhich order should I use?`,
           missingFields: ["orderId"]
         };
       }
