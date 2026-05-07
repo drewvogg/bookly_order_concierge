@@ -95,6 +95,10 @@ function appendTraceEvent(state: ConversationState, event: TraceEvent): Conversa
   };
 }
 
+function progressText(message: string | null) {
+  return (message ?? "Working").replace(/\.+$/, "");
+}
+
 export function ConciergeApp({ initialMode = "demo" }: { initialMode?: "demo" | "live" }) {
   const [state, setState] = useState<ConversationState>(() => createInitialState());
   const [draft, setDraft] = useState("");
@@ -229,12 +233,8 @@ export function ConciergeApp({ initialMode = "demo" }: { initialMode?: "demo" | 
           ))}
           {isSending ? (
             <div className="typing-indicator">
-              {progressMessage ?? "Working"}
-              <span className="typing-dots" aria-hidden="true">
-                <span />
-                <span />
-                <span />
-              </span>
+              {progressText(progressMessage)}
+              <span className="typing-ellipsis" aria-hidden="true" />
             </div>
           ) : null}
         </div>
