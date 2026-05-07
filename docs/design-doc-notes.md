@@ -58,7 +58,7 @@ Live extraction also captures sentiment/tone signals:
 - `urgency`: urgent timing pressure.
 - `exception_request`: request for special review or exception.
 
-Fuzzy signals such as frustration and urgency increment `escalationSignalCount`. The demo offers escalation after two fuzzy signals; it does not create a support ticket until the customer confirms. In delivery-exception flows, ordinary deadline language like “tomorrow” is treated as workflow input, not sentiment escalation, unless it is paired with frustration, human-help, or exception language. Fuzzy sentiment escalation does not override an available self-service remedy: the planner offers eligible replacements or labels first, then offers support if the customer rejects that path, asks for human help, or no self-service option is available.
+Fuzzy signals such as frustration and urgency increment `escalationSignalCount`. The demo offers escalation after two fuzzy signals; it does not create a support ticket until the customer confirms. In delivery-exception flows, ordinary deadline language like “tomorrow” is treated as workflow input, not sentiment escalation, unless it is paired with frustration, human-help, or exception language. Fuzzy sentiment escalation does not override an available self-service remedy: the planner offers eligible replacements or labels first. If no automated remediation is available, the planner records that terminal policy outcome; a later fuzzy signal can then trigger a support-ticket offer. Explicit human-help requests remain the immediate override path.
 
 ## 5. Replacement Workflow
 
@@ -102,12 +102,12 @@ Escalation is triggered when:
 - Verification is insufficient.
 - Tools cannot resolve the issue.
 - No replacement can meet the deadline.
-- A package is not yet missing long enough for automatic replacement, but the customer still needs review for urgent timing.
+- A package is not yet missing long enough for automatic replacement and the customer asks for human help or continues expressing frustration after the policy outcome is explained.
 - A return is requested before delivery.
 - The item condition blocks a self-service return.
 - The customer asks for human help, or repeated sentiment/tone signals cross the escalation threshold.
 
-In Live Mode, the LLM extracts sentiment/tone signals but does not decide the escalation action directly. `WorkflowPlanner` tracks `humanHelpRequested`, `exceptionRequested`, and `escalationSignalCount`; human-help requests trigger an escalation offer once an order is known, while frustration/urgency require two fuzzy signals and do not preempt an automated remedy that the agent has not offered yet. Demo Mode uses deterministic extraction for the same signal fields.
+In Live Mode, the LLM extracts sentiment/tone signals but does not decide the escalation action directly. `WorkflowPlanner` tracks `humanHelpRequested`, `exceptionRequested`, and `escalationSignalCount`. Human-help requests trigger an escalation offer once an order is known; if the account is verified but multiple orders match, the planner asks once for the order so the ticket can be routed correctly, then offers an account-level ticket if the customer keeps asking for human support. Frustration/urgency require two fuzzy signals and do not preempt an automated remedy that the agent has not offered yet. After a terminal policy outcome such as “not missing long enough,” the planner records that automated remediation has been exhausted for the order/outcome; a later fuzzy signal can then trigger an escalated support-ticket offer. Demo Mode uses deterministic extraction for the same signal fields.
 
 Manual-review cases should use neutral language. The agent should not accuse customers of fraud. It should say that a request needs support review because of policy, item type, order value, verification state, or special handling requirements.
 
