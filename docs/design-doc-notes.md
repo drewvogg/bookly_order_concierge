@@ -19,7 +19,7 @@ Chat UI -> /api/chat -> Agent Orchestrator
 
 The agent is the runtime around the model: extraction prompt, workflow state, deterministic planner, tool registry, policy evaluator, confirmation gates, action execution, response routing/rendering, and trace generation. Demo and Live modes share the same planner and tools. JSON-backed mock systems sit behind repository boundaries so they can later become OMS, carrier, inventory, returns, and CRM integrations.
 
-Live Mode uses the LLM for fuzzy language understanding, not for customer-impacting workflow authority. The LLM extracts intent, workflow state updates, confirmation intent, address questions, and customer sentiment/tone signals. `WorkflowPlanner` chooses the next legal step. Most customer-facing messages are planner templates because identity questions, order lists, confirmation gates, policy outcomes, and action IDs/links need exact wording and low latency. The LLM renders only selected open-ended responses where natural wording is worth the extra model call.
+Live Mode uses the LLM for fuzzy language understanding, not for customer-impacting workflow authority. The LLM extracts intent, workflow state updates, confirmation intent, address questions, and customer sentiment/tone signals. `WorkflowPlanner` chooses the next legal step. Most customer-facing messages are planner templates because identity questions, order lists, confirmation gates, policy outcomes, and action IDs/links need exact wording and low latency. Those templates are generated from current workflow state, so follow-up questions ask only for fields the customer has not already provided. The LLM renders only selected open-ended responses where natural wording is worth the extra model call.
 
 AOP Markdown files in `data/aops` make policies readable. Runtime policy authority lives in `lib/policies/evaluatePolicy.ts`, not in free-form model interpretation. The Markdown files are reviewer-facing and traceability artifacts; the LLM should not adjudicate policy by interpreting prose every turn.
 
@@ -41,7 +41,7 @@ The loop is: extract workflow updates, update state, let `WorkflowPlanner` choos
 
 Primary required fields:
 
-- Order identity: order number, or email plus zip code. Book title is optional disambiguation context, not an identity method.
+- Order identity: order number, or email plus zip code. Book title is optional disambiguation context for any lookup, not an identity method. Delivery-exception lookups scope email/zip matches to undelivered orders so delayed-order flows do not ask customers to choose from already-delivered history.
 - Item hint or order ID when multiple orders match.
 - Customer deadline for urgent replacement checks.
 - Original-condition confirmation for self-service returns.

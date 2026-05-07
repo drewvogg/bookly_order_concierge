@@ -37,6 +37,64 @@ function text(value: unknown) {
   return typeof value === "string" ? value : undefined;
 }
 
+function hasCompleteOrderLookup(fields: PlannerState) {
+  return Boolean(text(fields.orderId) || (text(fields.email) && text(fields.zipCode)));
+}
+
+function orderLookupMissingFields(fields: PlannerState) {
+  const missingFields: string[] = [];
+
+  if (!text(fields.orderId)) {
+    if (!text(fields.email) && !text(fields.zipCode)) {
+      missingFields.push("order number or email+zipCode");
+    } else {
+      if (!text(fields.email)) {
+        missingFields.push("email");
+      }
+
+      if (!text(fields.zipCode)) {
+        missingFields.push("zipCode");
+      }
+    }
+  }
+
+  return missingFields;
+}
+
+function orderLookupQuestion(fields: PlannerState, options: { includeItemHint?: boolean; noMatch?: boolean } = {}) {
+  const needsOrderId = !text(fields.orderId);
+  const needsEmail = !text(fields.email);
+  const needsZip = !text(fields.zipCode);
+  const needsItem = options.includeItemHint === true && !text(fields.itemHint);
+  const parts: string[] = [];
+
+  if (needsOrderId && needsEmail && needsZip) {
+    parts.push("the order number, or the email and zip code on the order");
+  } else {
+    if (needsOrderId && needsEmail) {
+      parts.push("the email on the order");
+    }
+
+    if (needsOrderId && needsZip) {
+      parts.push("the zip code on the order");
+    }
+  }
+
+  if (parts.length === 0) {
+    return options.noMatch
+      ? "I could not find a verified matching order. Could you check the details you provided?"
+      : "I have enough order details to look that up.";
+  }
+
+  const detailList = parts.length === 1 ? parts[0] : `${parts.slice(0, -1).join(", ")} and ${parts.at(-1)}`;
+  const prefix = options.noMatch
+    ? "I could not find a verified matching order. Could you check the details provided, or send"
+    : "Sure. Please send";
+  const itemHintSentence = needsItem ? " You can also include the book title if you know it." : "";
+
+  return `${prefix} ${detailList}.${itemHintSentence}`;
+}
+
 function lower(value: string) {
   return value.toLowerCase();
 }
@@ -461,21 +519,12 @@ export function planNextStep(input: AgentInput & { extraction: WorkflowExtractio
       };
     }
 
-    if (intent === "return_or_refund" && !text(fields.email) && !text(fields.orderId)) {
+    if (!hasCompleteOrderLookup(fields)) {
+      const includeItemHint = intent === "return_or_refund";
       return {
         type: "ask_clarifying_question",
-        message:
-          "Sure. What is the order number, or the email and zip code on the order? You can include the book title too if you know it.",
-        missingFields: ["order identity", "item"],
-        workflowStateUpdates
-      };
-    }
-
-    if (!text(fields.orderId) && (!text(fields.email) || !text(fields.zipCode))) {
-      return {
-        type: "ask_clarifying_question",
-        message: "I can help with that. What is the order number, or the email and zip code on the order?",
-        missingFields: ["orderId or email+zipCode"],
+        message: orderLookupQuestion(fields, { includeItemHint }),
+        missingFields: orderLookupMissingFields(fields),
         workflowStateUpdates
       };
     }
@@ -487,7 +536,8 @@ export function planNextStep(input: AgentInput & { extraction: WorkflowExtractio
         orderId: text(fields.orderId),
         email: text(fields.email),
         zipCode: text(fields.zipCode),
-        itemHint: text(fields.itemHint)
+        itemHint: text(fields.itemHint),
+        undeliveredOnly: intent === "delivery_exception"
       },
       workflowStateUpdates
     };
@@ -641,7 +691,7 @@ function afterTool(fields: PlannerState, workflowStateUpdates: PlannerState): Ag
       if (matches.length === 0) {
         return {
           type: "ask_clarifying_question",
-          message: "I could not find a verified matching order. Could you check the order number, or provide the email and zip code on the order?",
+          message: orderLookupQuestion(fields, { noMatch: true }),
           missingFields: ["verified order"]
         };
       }

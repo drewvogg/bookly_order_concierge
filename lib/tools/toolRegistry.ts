@@ -149,7 +149,8 @@ export async function executeTool(toolName: ToolName, args: Record<string, unkno
         orderId: asString(args.orderId),
         email: asString(args.email),
         zipCode: asString(args.zipCode),
-        itemHint: asString(args.itemHint)
+        itemHint: asString(args.itemHint),
+        undeliveredOnly: asBoolean(args.undeliveredOnly)
       });
 
       return {
