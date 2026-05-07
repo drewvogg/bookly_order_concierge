@@ -153,7 +153,7 @@ export function ConciergeApp({ initialMode = "demo" }: { initialMode?: "demo" | 
       const nextLine = extractionProgressLines[nextLineIndex];
       nextLineIndex += 1;
       setProgressLines((currentLines) => appendProgressLine(currentLines, nextLine));
-    }, 1500);
+    }, 2000);
 
     return () => window.clearInterval(intervalId);
   }, [isSending, isExpandingExtractionProgress]);
