@@ -37,6 +37,14 @@ function text(value: unknown) {
   return typeof value === "string" ? value : undefined;
 }
 
+function deliveryEstimateText(date: unknown, guaranteed: boolean) {
+  const guaranteeText = guaranteed
+    ? "and the carrier marks it guaranteed"
+    : "but the carrier cannot guarantee that delivery date; it is just an estimate";
+
+  return `${text(date) ?? "unknown"} ${guaranteeText}`;
+}
+
 function hasCompleteOrderLookup(fields: PlannerState) {
   return Boolean(text(fields.orderId) || (text(fields.email) && text(fields.zipCode)));
 }
@@ -82,13 +90,13 @@ function orderLookupQuestion(fields: PlannerState, options: { includeItemHint?: 
 
   if (parts.length === 0) {
     return options.noMatch
-      ? "I could not find a verified matching order. Could you check the details you provided?"
+      ? "I could not find a matching order with those details. Please double-check the email, zip code, order number, and book title spelling, or send the order number if you have it."
       : "I have enough order details to look that up.";
   }
 
   const detailList = parts.length === 1 ? parts[0] : `${parts.slice(0, -1).join(", ")} and ${parts.at(-1)}`;
   const prefix = options.noMatch
-    ? "I could not find a verified matching order. Could you check the details provided, or send"
+    ? "I could not find a matching order with those details. Please double-check the email, zip code, order number, and book title spelling, or send"
     : "Sure. Please send";
   const itemHintSentence = needsItem ? " You can also include the book title if you know it." : "";
 
@@ -163,17 +171,33 @@ function extractReturnReason(message: string) {
 }
 
 function classifyIntent(message: string, currentIntent?: Intent): Intent {
-  if (currentIntent && currentIntent !== "unknown") return currentIntent;
   const value = lower(message);
+  const hasKnownIntent = currentIntent && currentIntent !== "unknown";
 
   if (/\b(return|refund|label|wrong format)\b/.test(value)) return "return_or_refund";
   if (/\b(delayed|late|stuck|missing|hasn.?t arrived|not arrived|gift|birthday|replacement)\b/.test(value)) {
     return "delivery_exception";
   }
+  if (
+    /\b(status|tracking|where is|where's)\b/.test(value) &&
+    /\b(supposed to be|should have been|need it|need this|need the book|today|tomorrow|deadline|what can|anything we can do)\b/.test(
+      value
+    )
+  ) {
+    return "delivery_exception";
+  }
+
+  if (
+    (currentIntent === "order_status" || currentIntent === "delivery_exception") &&
+    /\b(anything|what can|can we|can you|options?|next steps?|help|fix|resolve|do about)\b/.test(value)
+  ) {
+    return "delivery_exception";
+  }
+
   if (/\b(status|tracking|where is|where's)\b/.test(value)) return "order_status";
   if (/\b(password|login|sign in)\b/.test(value)) return "password_reset";
   if (/\b(shipping policy|shipping|delivery policy)\b/.test(value)) return "shipping_policy";
-  return "unknown";
+  return hasKnownIntent ? currentIntent : "unknown";
 }
 
 function formatIsoDate(year: number, month: number, day: number) {
@@ -200,6 +224,17 @@ function addDaysToDemoToday(days: number) {
 }
 
 function parseCustomerDeadline(message: string) {
+  const explicitRelativeDeadline = message.match(
+    /\b(?:need(?:\s+(?:it|this|the book|my order))?|arriv(?:e|es)|deliver(?:ed|y)?)\b[^.?!;]*(today|tomorrow)\b/i
+  );
+  if (explicitRelativeDeadline?.[1]?.toLowerCase() === "tomorrow") {
+    return addDaysToDemoToday(1);
+  }
+
+  if (explicitRelativeDeadline?.[1]?.toLowerCase() === "today") {
+    return DEMO_TODAY;
+  }
+
   if (/\btoday\b/i.test(message)) {
     return DEMO_TODAY;
   }
@@ -427,9 +462,160 @@ function getCustomerSignalEscalation(fields: PlannerState) {
   return undefined;
 }
 
+function isHumanHelpEscalation(escalation: ReturnType<typeof getCustomerSignalEscalation>) {
+  return escalation?.issueType === "customer_requested_human_help";
+}
+
+function isSelfServicePolicyAction(decision: Record<string, unknown> | undefined) {
+  const action = text(decision?.recommendedAction);
+  return action === "offer_same_item_replacement" || action === "offer_substitute_replacement" || action === "create_return_label";
+}
+
+function hasDeliveryResolutionContext(fields: PlannerState) {
+  const intent = fields.intent as Intent;
+  if (intent === "delivery_exception") {
+    return true;
+  }
+
+  if (intent !== "order_status") {
+    return false;
+  }
+
+  const signalCount = typeof fields.escalationSignalCount === "number" ? fields.escalationSignalCount : 0;
+  return Boolean(text(fields.customerDeadline) || fields.customerDeadlineParseFailed === true || signalCount > 0);
+}
+
+function trackingCanSupportDeliveryResolution(fields: PlannerState) {
+  const trackingStatus = getTrackingStatus(fields);
+  if (!trackingStatus) {
+    return true;
+  }
+
+  return ["exception", "no_recent_scan"].includes(text(trackingStatus.status) ?? "");
+}
+
+function supportTicketConfirmationStep(input: {
+  orderId?: string;
+  escalation: NonNullable<ReturnType<typeof getCustomerSignalEscalation>>;
+  context?: Record<string, unknown>;
+  workflowStateUpdates?: PlannerState;
+}): AgentStep {
+  return {
+    type: "request_confirmation",
+    message: `${input.escalation.explanation} Should I create a support ticket so the team can review ${input.orderId}?`,
+    pendingAction: supportTicketAction({
+      orderId: input.orderId,
+      issueType: input.escalation.issueType,
+      priority: input.escalation.priority,
+      summary: input.escalation.summary,
+      context: input.context ?? {}
+    }),
+    workflowStateUpdates: input.workflowStateUpdates
+  };
+}
+
+function deliveryResolutionStep(fields: PlannerState, workflowStateUpdates: PlannerState): AgentStep | undefined {
+  const activeOrder = getActiveOrder(fields);
+  const activeOrderId = text(activeOrder?.orderId);
+  if (!activeOrderId || !hasDeliveryResolutionContext(fields) || !trackingCanSupportDeliveryResolution(fields)) {
+    return undefined;
+  }
+
+  const deliveryWorkflowStateUpdates = { ...workflowStateUpdates, intent: "delivery_exception" };
+  const trackingStatus = getTrackingStatus(fields);
+  if (!trackingStatus) {
+    return {
+      type: "tool_call",
+      toolName: "getTrackingStatus",
+      args: { trackingNumber: text(activeOrder?.trackingNumber) },
+      workflowStateUpdates: deliveryWorkflowStateUpdates
+    };
+  }
+
+  const hoursSinceLastScan =
+    typeof trackingStatus?.hoursSinceLastScan === "number" ? trackingStatus.hoursSinceLastScan : undefined;
+  if (hoursSinceLastScan === undefined) {
+    return {
+      type: "tool_call",
+      toolName: "evaluatePolicy",
+      args: {
+        issueType: "delivery_exception",
+        orderId: activeOrderId,
+        context: {
+          order: activeOrder,
+          trackingStatus
+        }
+      },
+      workflowStateUpdates: deliveryWorkflowStateUpdates
+    };
+  }
+
+  if (!text(fields.customerDeadline) && (hoursSinceLastScan ?? 0) >= 48) {
+    const message =
+      fields.customerDeadlineParseFailed === true
+        ? "I could not turn that into a specific deadline date. Please send a date like May 7, 05/07/2026, or 2026-05-07 so I can check replacement options."
+        : "When do you need the book to arrive? That helps me check only replacement options that can meet your deadline.";
+
+    return {
+      type: "ask_clarifying_question",
+      message,
+      missingFields: ["customerDeadline"],
+      workflowStateUpdates: deliveryWorkflowStateUpdates
+    };
+  }
+
+  if (!getShippingOptions(fields)) {
+    if (!fields.inventory) {
+      return {
+        type: "tool_call",
+        toolName: "checkReplacementInventory",
+        args: {
+          orderId: activeOrderId,
+          originalSku: text(activeOrder?.sku),
+          zipCode: text(activeOrder?.deliveryZip),
+          customerDeadline: text(fields.customerDeadline)
+        },
+        workflowStateUpdates: deliveryWorkflowStateUpdates
+      };
+    }
+
+    return {
+      type: "tool_call",
+      toolName: "quoteShippingOptions",
+      args: {
+        orderId: activeOrderId,
+        zipCode: text(activeOrder?.deliveryZip),
+        customerDeadline: text(fields.customerDeadline)
+      },
+      workflowStateUpdates: deliveryWorkflowStateUpdates
+    };
+  }
+
+  if (!getPolicyDecision(fields)) {
+    return {
+      type: "tool_call",
+      toolName: "evaluatePolicy",
+      args: {
+        issueType: "delivery_exception",
+        orderId: activeOrderId,
+        context: {
+          order: activeOrder,
+          trackingStatus,
+          shippingOptions: getShippingOptions(fields),
+          customerDeadline: text(fields.customerDeadline)
+        }
+      },
+      workflowStateUpdates: deliveryWorkflowStateUpdates
+    };
+  }
+
+  return afterPolicy({ ...fields, intent: "delivery_exception" });
+}
+
 export function planNextStep(input: AgentInput & { extraction: WorkflowExtraction }): AgentStep {
     const extracted: PlannerState = input.extraction.workflowStateUpdates ?? {};
-    const intent = (extracted.intent as Intent | undefined) ?? (input.state.workflowState.intent as Intent | undefined) ?? "unknown";
+    const intent =
+      (extracted.intent as Intent | undefined) ?? (input.state.workflowState.intent as Intent | undefined) ?? "unknown";
     const fields: PlannerState = { ...input.state.workflowState, ...extracted, intent };
     const workflowStateUpdates: PlannerState = { ...extracted, intent };
     const activeOrder = getActiveOrder(fields);
@@ -446,24 +632,37 @@ export function planNextStep(input: AgentInput & { extraction: WorkflowExtractio
     }
 
     const supportEscalation = getCustomerSignalEscalation(fields);
-    if (activeOrderId && supportEscalation) {
-      return {
-        type: "request_confirmation",
-        message: `${supportEscalation.explanation} Should I create a support ticket so the team can review ${activeOrderId}?`,
-        pendingAction: supportTicketAction({
-          orderId: activeOrderId,
-          issueType: supportEscalation.issueType,
-          priority: supportEscalation.priority,
-          summary: supportEscalation.summary,
-          context: {
-            customerSignals: {
-              humanHelpRequested: fields.humanHelpRequested,
-              escalationSignalCount: fields.escalationSignalCount
-            }
+    if (activeOrderId && supportEscalation && isHumanHelpEscalation(supportEscalation)) {
+      return supportTicketConfirmationStep({
+        orderId: activeOrderId,
+        escalation: supportEscalation,
+        context: {
+          customerSignals: {
+            humanHelpRequested: fields.humanHelpRequested,
+            escalationSignalCount: fields.escalationSignalCount
           }
-        }),
+        },
         workflowStateUpdates
-      };
+      });
+    }
+
+    const deliveryStep = deliveryResolutionStep(fields, workflowStateUpdates);
+    if (deliveryStep) {
+      return deliveryStep;
+    }
+
+    if (activeOrderId && supportEscalation) {
+      return supportTicketConfirmationStep({
+        orderId: activeOrderId,
+        escalation: supportEscalation,
+        context: {
+          customerSignals: {
+            humanHelpRequested: fields.humanHelpRequested,
+            escalationSignalCount: fields.escalationSignalCount
+          }
+        },
+        workflowStateUpdates
+      });
     }
 
     const policyDecision = getPolicyDecision(fields);
@@ -520,7 +719,7 @@ export function planNextStep(input: AgentInput & { extraction: WorkflowExtractio
     }
 
     if (!hasCompleteOrderLookup(fields)) {
-      const includeItemHint = intent === "return_or_refund";
+      const includeItemHint = intent === "return_or_refund" || intent === "delivery_exception";
       return {
         type: "ask_clarifying_question",
         message: orderLookupQuestion(fields, { includeItemHint }),
@@ -586,6 +785,20 @@ function handlePendingAction(input: AgentInput & { extraction: WorkflowExtractio
 
     if (pending.type === "confirm_replacement_address") {
       if (confirmationIntent === "reject") {
+        const supportEscalation = getCustomerSignalEscalation(input.state.workflowState);
+        if (supportEscalation) {
+          return supportTicketConfirmationStep({
+            orderId: pending.originalOrderId,
+            escalation: supportEscalation,
+            context: {
+              customerSignals: {
+                humanHelpRequested: input.state.workflowState.humanHelpRequested,
+                escalationSignalCount: input.state.workflowState.escalationSignalCount
+              }
+            }
+          });
+        }
+
         return {
           type: "respond",
           message: "Got it. I have not created a replacement order. A support teammate can help update the address or review other options."
@@ -698,13 +911,14 @@ function afterTool(fields: PlannerState, workflowStateUpdates: PlannerState): Ag
       if (matches.length > 1) {
         const options = matches
           .map((match) => asRecord(match))
+          .filter((match): match is Record<string, unknown> => Boolean(match))
+          .sort((a, b) => (text(b.placedAt) ?? "").localeCompare(text(a.placedAt) ?? ""))
+          .map((match) => `- ${match.orderId} (${match.itemTitle}, placed ${match.placedAt})`)
           .filter(Boolean)
-          .map((match) => `${match?.orderId} (${match?.itemTitle}, placed ${match?.placedAt})`)
-          .filter(Boolean)
-          .join("; ");
+          .join("\n");
         return {
           type: "ask_clarifying_question",
-          message: `I found a few matching orders: ${options}. Which order should I use?`,
+          message: `I found a few matching orders:\n${options}\nWhich order should I use?`,
           missingFields: ["orderId"]
         };
       }
@@ -732,59 +946,19 @@ function afterTool(fields: PlannerState, workflowStateUpdates: PlannerState): Ag
 
     if (lastToolName === "getTrackingStatus") {
       const trackingStatus = getTrackingStatus(fields);
-      if (intent === "order_status") {
-        return {
-          type: "respond",
-          message:
-            `I found ${activeOrderId} for ${activeOrder?.itemTitle}. ` +
-            `The carrier status is ${trackingStatus?.status}: ${trackingStatus?.statusDetail} ` +
-            (trackingStatus?.estimatedDelivery
-              ? `Estimated delivery is ${trackingStatus.estimatedDelivery}.`
-              : "There is no current delivery estimate from the carrier.")
-        };
-      }
-
-      const hoursSinceLastScan =
-        typeof trackingStatus?.hoursSinceLastScan === "number" ? trackingStatus.hoursSinceLastScan : undefined;
-      if (hoursSinceLastScan === undefined) {
-        return {
-          type: "tool_call",
-          toolName: "evaluatePolicy",
-          args: {
-            issueType: "delivery_exception",
-            orderId: activeOrderId,
-            context: {
-              order: activeOrder,
-              trackingStatus
-            }
-          },
-          workflowStateUpdates
-        };
-      }
-
-      if (!text(fields.customerDeadline) && (hoursSinceLastScan ?? 0) >= 48) {
-        const message =
-          fields.customerDeadlineParseFailed === true
-            ? "I could not turn that into a specific deadline date. Please send a date like May 7, 05/07/2026, or 2026-05-07 so I can check replacement options."
-            : "When do you need the book to arrive? That helps me check only replacement options that can meet your deadline.";
-
-        return {
-          type: "ask_clarifying_question",
-          message,
-          missingFields: ["customerDeadline"]
-        };
+      const deliveryStep = deliveryResolutionStep(fields, workflowStateUpdates);
+      if (deliveryStep) {
+        return deliveryStep;
       }
 
       return {
-        type: "tool_call",
-        toolName: "checkReplacementInventory",
-        args: {
-          orderId: activeOrderId,
-          originalSku: text(activeOrder?.sku),
-          zipCode: text(activeOrder?.deliveryZip),
-          customerDeadline: text(fields.customerDeadline)
-        },
-        workflowStateUpdates
+        type: "respond",
+        message:
+          `I found ${activeOrderId} for ${activeOrder?.itemTitle}. ` +
+          `The carrier status is ${trackingStatus?.status}: ${trackingStatus?.statusDetail} ` +
+          (trackingStatus?.estimatedDelivery
+            ? `Estimated delivery is ${trackingStatus.estimatedDelivery}.`
+            : "There is no current delivery estimate from the carrier.")
       };
     }
 
@@ -832,7 +1006,7 @@ function afterTool(fields: PlannerState, workflowStateUpdates: PlannerState): Ag
         type: "respond",
         message:
           `Done. I ${verb} ${replacement?.replacementOrderId} for ${activeOrderId}. ` +
-          `Estimated delivery is ${replacement?.estimatedDelivery}${guaranteed ? " and the carrier marks it guaranteed." : ", but it is not guaranteed."}`
+          `Estimated delivery is ${deliveryEstimateText(replacement?.estimatedDelivery, guaranteed)}.`
       };
     }
 
@@ -875,24 +1049,18 @@ function afterPolicy(fields: PlannerState): AgentStep {
     }
 
     const supportEscalation = getCustomerSignalEscalation(fields);
-    if (supportEscalation) {
-      return {
-        type: "request_confirmation",
-        message: `${supportEscalation.explanation} Should I create a support ticket so the team can review ${orderId}?`,
-        pendingAction: supportTicketAction({
-          orderId,
-          issueType: supportEscalation.issueType,
-          priority: supportEscalation.priority,
-          summary: supportEscalation.summary,
-          context: {
-            policyDecision: decision,
-            customerSignals: {
-              humanHelpRequested: fields.humanHelpRequested,
-              escalationSignalCount: fields.escalationSignalCount
-            }
+    if (supportEscalation && (isHumanHelpEscalation(supportEscalation) || !isSelfServicePolicyAction(decision))) {
+      return supportTicketConfirmationStep({
+        orderId,
+        escalation: supportEscalation,
+        context: {
+          policyDecision: decision,
+          customerSignals: {
+            humanHelpRequested: fields.humanHelpRequested,
+            escalationSignalCount: fields.escalationSignalCount
           }
-        })
-      };
+        }
+      });
     }
 
     if (decision.reasonCode === "inside_return_window") {
@@ -966,7 +1134,7 @@ function afterPolicy(fields: PlannerState): AgentStep {
         type: "request_confirmation",
         message:
           `I found ${orderId}. The carrier has not recovered it, and a same-item replacement is available. ` +
-          `It is estimated for ${sameItem?.estimatedDelivery}${guaranteed ? " and the carrier marks it guaranteed" : ", but it is not guaranteed"}. Please confirm I should send it to the ${text(order?.maskedAddress) ?? "address on the order"}.`,
+          `It is estimated for ${deliveryEstimateText(sameItem?.estimatedDelivery, guaranteed)}. Please confirm I should send it to the ${text(order?.maskedAddress) ?? "address on the order"}.`,
         pendingAction: {
           type: "confirm_replacement_address",
           description: `Create same-item replacement for ${itemTitle}`,
@@ -987,7 +1155,7 @@ function afterPolicy(fields: PlannerState): AgentStep {
         type: "request_confirmation",
         message:
           `I found ${orderId}. The original edition is not available for a replacement that can arrive in time. ` +
-          `We can offer ${substitute?.title} as a substitute, estimated for ${substitute?.estimatedDelivery}${guaranteed ? " with a carrier guarantee" : ", but not guaranteed"}. Is that substitute acceptable?`,
+          `We can offer ${substitute?.title} as a substitute, estimated for ${deliveryEstimateText(substitute?.estimatedDelivery, guaranteed)}. Is that substitute acceptable?`,
         pendingAction: {
           type: "approve_substitute",
           description: `Approve substitute replacement ${substitute?.title}`,
