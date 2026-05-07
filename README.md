@@ -26,6 +26,10 @@ npm run dev
 
 Open `http://localhost:3000`.
 
+## Hosted Demo
+
+A deployed Live Mode demo is available at `https://bookly-order-concierge.vercel.app/` for reviewers who want to try the agent without setting up a local OpenAI API key.
+
 The dev server logs each turn to the terminal with extraction results, planner steps, tool calls, response render mode/timing, and total duration. This is useful when testing Live Mode latency or checking which intent/sentiment signals the model extracted.
 
 Live Mode routes responses for speed and reliability. Operational messages such as identity questions, order disambiguation, confirmation gates, policy outcomes, and created action IDs/links use planner templates. Those responses need exact wording and should not pay for a second model call. The LLM is used for extraction on each turn and for selected open-ended responses where natural wording is worth the latency.
