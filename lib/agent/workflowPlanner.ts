@@ -37,6 +37,14 @@ function text(value: unknown) {
   return typeof value === "string" ? value : undefined;
 }
 
+function deliveryEstimateText(date: unknown, guaranteed: boolean) {
+  const guaranteeText = guaranteed
+    ? "and the carrier marks it guaranteed"
+    : "but the carrier cannot guarantee that delivery date; it is just an estimate";
+
+  return `${text(date) ?? "unknown"} ${guaranteeText}`;
+}
+
 function hasCompleteOrderLookup(fields: PlannerState) {
   return Boolean(text(fields.orderId) || (text(fields.email) && text(fields.zipCode)));
 }
@@ -997,7 +1005,7 @@ function afterTool(fields: PlannerState, workflowStateUpdates: PlannerState): Ag
         type: "respond",
         message:
           `Done. I ${verb} ${replacement?.replacementOrderId} for ${activeOrderId}. ` +
-          `Estimated delivery is ${replacement?.estimatedDelivery}${guaranteed ? " and the carrier marks it guaranteed." : ", but it is not guaranteed."}`
+          `Estimated delivery is ${deliveryEstimateText(replacement?.estimatedDelivery, guaranteed)}.`
       };
     }
 
@@ -1125,7 +1133,7 @@ function afterPolicy(fields: PlannerState): AgentStep {
         type: "request_confirmation",
         message:
           `I found ${orderId}. The carrier has not recovered it, and a same-item replacement is available. ` +
-          `It is estimated for ${sameItem?.estimatedDelivery}${guaranteed ? " and the carrier marks it guaranteed" : ", but it is not guaranteed"}. Please confirm I should send it to the ${text(order?.maskedAddress) ?? "address on the order"}.`,
+          `It is estimated for ${deliveryEstimateText(sameItem?.estimatedDelivery, guaranteed)}. Please confirm I should send it to the ${text(order?.maskedAddress) ?? "address on the order"}.`,
         pendingAction: {
           type: "confirm_replacement_address",
           description: `Create same-item replacement for ${itemTitle}`,
@@ -1146,7 +1154,7 @@ function afterPolicy(fields: PlannerState): AgentStep {
         type: "request_confirmation",
         message:
           `I found ${orderId}. The original edition is not available for a replacement that can arrive in time. ` +
-          `We can offer ${substitute?.title} as a substitute, estimated for ${substitute?.estimatedDelivery}${guaranteed ? " with a carrier guarantee" : ", but not guaranteed"}. Is that substitute acceptable?`,
+          `We can offer ${substitute?.title} as a substitute, estimated for ${deliveryEstimateText(substitute?.estimatedDelivery, guaranteed)}. Is that substitute acceptable?`,
         pendingAction: {
           type: "approve_substitute",
           description: `Approve substitute replacement ${substitute?.title}`,

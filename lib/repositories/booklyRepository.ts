@@ -156,23 +156,21 @@ export const booklyRepository = {
     const customerOrders = ordersSeed.filter((order) => order.customerId === customer.customerId);
 
     if (itemHint) {
+      const hintTokens = itemHint.split(" ").filter((token) => token.length > 1);
       const scored = customerOrders
         .map((order) => {
           const haystack = normalize(`${order.itemTitle} ${order.sku}`);
-          const hintTokens = itemHint.split(" ").filter(Boolean);
           const score = hintTokens.reduce((sum, token) => sum + (haystack.includes(token) ? 1 : 0), 0);
           return { order, score };
         })
         .filter((item) => item.score > 0)
         .sort((a, b) => b.score - a.score || b.order.placedAt.localeCompare(a.order.placedAt));
 
-      return scored.slice(0, 2).map(({ order }) => toSafeOrder(order));
+      return scored.map(({ order }) => toSafeOrder(order));
     }
 
     return customerOrders
-      .filter((order) => !order.deliveredAt || order.deliveredAt >= "2026-02-01")
       .sort((a, b) => b.placedAt.localeCompare(a.placedAt))
-      .slice(0, 3)
       .map(toSafeOrder);
   },
 
