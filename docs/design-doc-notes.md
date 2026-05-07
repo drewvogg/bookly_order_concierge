@@ -41,7 +41,7 @@ The loop is: extract workflow updates, update state, let `WorkflowPlanner` choos
 
 Primary required fields:
 
-- Order identity: order number, or email plus zip code. Book title is optional disambiguation context for any lookup, not an identity method. Delivery-exception lookups scope email/zip matches to undelivered orders so delayed-order flows do not ask customers to choose from already-delivered history.
+- Order identity: order number, or email plus zip code. Book title is optional disambiguation context for any lookup, not an identity method.
 - Item hint or order ID when multiple orders match.
 - Customer deadline for urgent replacement checks.
 - Original-condition confirmation for self-service returns.
