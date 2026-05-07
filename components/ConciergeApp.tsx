@@ -2,7 +2,14 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { KeyboardEvent } from "react";
-import type { ChatMessage, ConversationState, TraceEvent } from "@/lib/agent/types";
+import type { ChatMessage, ChatStreamEvent, ConversationState, TraceEvent } from "@/lib/agent/types";
+
+const extractionProgressLines = [
+  "Understanding request",
+  "Mapping request details",
+  "Checking required information",
+  "Preparing next step"
+];
 
 function createInitialState(): ConversationState {
   return {
@@ -52,11 +59,69 @@ function createOptimisticUserMessage(content: string): ChatMessage {
   };
 }
 
+async function readChatStream(response: Response, onEvent: (event: ChatStreamEvent) => void) {
+  if (!response.body) {
+    throw new Error("Chat response did not include a stream.");
+  }
+
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = "";
+
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) {
+      break;
+    }
+
+    buffer += decoder.decode(value, { stream: true });
+    const lines = buffer.split("\n");
+    buffer = lines.pop() ?? "";
+
+    for (const line of lines) {
+      if (line.trim()) {
+        onEvent(JSON.parse(line) as ChatStreamEvent);
+      }
+    }
+  }
+
+  buffer += decoder.decode();
+  if (buffer.trim()) {
+    onEvent(JSON.parse(buffer) as ChatStreamEvent);
+  }
+}
+
+function appendTraceEvent(state: ConversationState, event: TraceEvent): ConversationState {
+  if (state.traceEvents.some((existingEvent) => existingEvent.id === event.id)) {
+    return state;
+  }
+
+  return {
+    ...state,
+    traceEvents: [...state.traceEvents, event]
+  };
+}
+
+function progressText(message: string | null) {
+  return (message ?? "Working").replace(/\.+$/, "");
+}
+
+function appendProgressLine(lines: string[], message: string) {
+  const nextLine = progressText(message);
+  if (lines[lines.length - 1] === nextLine) {
+    return lines;
+  }
+
+  return [...lines, nextLine];
+}
+
 export function ConciergeApp({ initialMode = "demo" }: { initialMode?: "demo" | "live" }) {
   const [state, setState] = useState<ConversationState>(() => createInitialState());
   const [draft, setDraft] = useState("");
   const [mode, setMode] = useState<"demo" | "live">(initialMode);
   const [isSending, setIsSending] = useState(false);
+  const [progressLines, setProgressLines] = useState<string[]>([]);
+  const [isExpandingExtractionProgress, setIsExpandingExtractionProgress] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const messageListRef = useRef<HTMLDivElement>(null);
@@ -66,7 +131,7 @@ export function ConciergeApp({ initialMode = "demo" }: { initialMode?: "demo" | 
 
   useEffect(() => {
     scrollToBottom(messageListRef.current);
-  }, [state.messages.length, isSending]);
+  }, [state.messages.length, isSending, progressLines.length]);
 
   useEffect(() => {
     if (!isSending) {
@@ -74,11 +139,32 @@ export function ConciergeApp({ initialMode = "demo" }: { initialMode?: "demo" | 
     }
   }, [isSending]);
 
+  useEffect(() => {
+    if (!isSending || !isExpandingExtractionProgress) {
+      return;
+    }
+
+    let nextLineIndex = 1;
+    const intervalId = window.setInterval(() => {
+      if (nextLineIndex >= extractionProgressLines.length) {
+        return;
+      }
+
+      const nextLine = extractionProgressLines[nextLineIndex];
+      nextLineIndex += 1;
+      setProgressLines((currentLines) => appendProgressLine(currentLines, nextLine));
+    }, 2000);
+
+    return () => window.clearInterval(intervalId);
+  }, [isSending, isExpandingExtractionProgress]);
+
   async function sendMessage(message: string) {
     const requestState = state;
     const optimisticMessage = createOptimisticUserMessage(message);
 
     setIsSending(true);
+    setProgressLines(["Starting"]);
+    setIsExpandingExtractionProgress(false);
     setError(null);
     setState((currentState) => ({
       ...currentState,
@@ -92,18 +178,55 @@ export function ConciergeApp({ initialMode = "demo" }: { initialMode?: "demo" | 
         body: JSON.stringify({ message, state: requestState })
       });
 
-      const payload = await response.json();
       if (!response.ok) {
+        const payload = (await response.json()) as { error?: string };
         throw new Error(payload.error ?? "Chat request failed");
       }
 
-      setMode(payload.mode);
-      setState(payload.state);
+      let receivedFinalState = false;
+      await readChatStream(response, (event) => {
+        if (event.type === "mode") {
+          setMode(event.mode);
+          return;
+        }
+
+        if (event.type === "progress") {
+          const nextProgressLine = progressText(event.message);
+          setProgressLines((currentLines) => {
+            const linesFromStream = currentLines.length === 1 && currentLines[0] === "Starting" ? [] : currentLines;
+            return appendProgressLine(linesFromStream, nextProgressLine);
+          });
+          setIsExpandingExtractionProgress(nextProgressLine === extractionProgressLines[0]);
+          return;
+        }
+
+        if (event.type === "trace_event") {
+          setState((currentState) => appendTraceEvent(currentState, event.event));
+          return;
+        }
+
+        if (event.type === "final") {
+          receivedFinalState = true;
+          setMode(event.mode);
+          setState(event.state);
+          return;
+        }
+
+        if (event.type === "error") {
+          throw new Error(event.error);
+        }
+      });
+
+      if (!receivedFinalState) {
+        throw new Error("Chat stream ended before the agent returned a final response.");
+      }
     } catch (requestError) {
       setError(requestError instanceof Error ? requestError.message : "Something went wrong.");
       setDraft((currentDraft) => currentDraft || message);
     } finally {
       setIsSending(false);
+      setProgressLines([]);
+      setIsExpandingExtractionProgress(false);
       inputRef.current?.focus();
     }
   }
@@ -151,7 +274,20 @@ export function ConciergeApp({ initialMode = "demo" }: { initialMode?: "demo" | 
           {state.messages.map((message) => (
             <MessageBubble key={message.id} message={message} />
           ))}
-          {isSending ? <div className="typing-indicator">Working...</div> : null}
+          {isSending ? (
+            <div className="typing-indicator" aria-live="polite">
+              {progressLines.map((line, index) => (
+                <div className="typing-line" key={line}>
+                  {line}
+                  {index === progressLines.length - 1 ? (
+                    <span className="typing-ellipsis" aria-hidden="true" />
+                  ) : (
+                    <span className="typing-static-ellipsis">...</span>
+                  )}
+                </div>
+              ))}
+            </div>
+          ) : null}
         </div>
 
         {error ? <div className="error-banner">{error}</div> : null}

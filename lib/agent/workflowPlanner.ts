@@ -536,8 +536,7 @@ export function planNextStep(input: AgentInput & { extraction: WorkflowExtractio
         orderId: text(fields.orderId),
         email: text(fields.email),
         zipCode: text(fields.zipCode),
-        itemHint: text(fields.itemHint),
-        undeliveredOnly: intent === "delivery_exception"
+        itemHint: text(fields.itemHint)
       },
       workflowStateUpdates
     };

@@ -31,9 +31,9 @@ AOP Markdown files in `data/aops` make policies readable. Runtime policy authori
 
 In plain English, workflow-state filling means: identify what the customer is trying to do, determine which required fields are missing, ask for the smallest next missing field, and only act once the workflow has enough verified state. For example, a return workflow needs `email`, `zipCode`, `orderId` or `itemHint`, `returnConditionConfirmed`, and final confirmation. A delayed replacement workflow needs `orderId`, `customerDeadline`, `trackingStatus`, `shippingOptions`, `policyDecision`, substitute approval, and address confirmation.
 
-The trace panel renders structured events derived from state and tool execution: intent detection, customer signals, clarifying questions, tool calls, policy checks, confirmation gates, and action results. It intentionally does not expose raw chain-of-thought.
+The `/api/chat` route streams newline-delimited events instead of waiting to return one JSON blob. The chat panel shows temporary progress messages such as "Understanding request" or "Checking order details" while the turn is running, then replaces them with the final assistant response. The trace panel streams only real trace events derived from state and tool execution: intent detection, customer signals, clarifying questions, tool calls, policy checks, confirmation gates, and action results. It intentionally does not expose raw chain-of-thought or placeholder trace entries.
 
-The server logs the same control-flow milestones to the terminal: extraction output, planner step type, tool start/done, response render mode/timing, and total turn duration. The UI trace is reviewer-facing; terminal logs are developer-facing and make Live Mode latency/debugging easier without adding streaming complexity.
+The server logs the same control-flow milestones to the terminal: extraction output, planner step type, tool start/done, response render mode/timing, and total turn duration. The UI trace is reviewer-facing; terminal logs are developer-facing and make Live Mode latency/debugging easier to inspect alongside streamed UI progress.
 
 ## 4. Conversation & Decision Design
 
@@ -41,7 +41,7 @@ The loop is: extract workflow updates, update state, let `WorkflowPlanner` choos
 
 Primary required fields:
 
-- Order identity: order number, or email plus zip code. Book title is optional disambiguation context for any lookup, not an identity method. Delivery-exception lookups scope email/zip matches to undelivered orders so delayed-order flows do not ask customers to choose from already-delivered history.
+- Order identity: order number, or email plus zip code. Book title is optional disambiguation context for any lookup, not an identity method.
 - Item hint or order ID when multiple orders match.
 - Customer deadline for urgent replacement checks.
 - Original-condition confirmation for self-service returns.

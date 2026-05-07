@@ -10,10 +10,16 @@ import type {
   ConversationState,
   CustomerSignal,
   PendingAction,
+  TraceEvent,
   ToolName,
   WorkflowExtraction
 } from "./types";
 import { executeTool } from "@/lib/tools/toolRegistry";
+
+type AgentTurnCallbacks = {
+  onProgress?: (message: string) => void;
+  onTraceEvent?: (event: TraceEvent) => void;
+};
 
 function createMessage(role: "user" | "assistant", content: string): ChatMessage {
   return {
@@ -30,6 +36,15 @@ function getModelClient(): ModelClient {
 
 function logAgentEvent(event: string, details: Record<string, unknown>) {
   console.info(`[bookly-agent] ${event}`, details);
+}
+
+function emitProgress(callbacks: AgentTurnCallbacks | undefined, message: string) {
+  callbacks?.onProgress?.(message);
+}
+
+function appendTraceEvent(state: ConversationState, event: TraceEvent, callbacks?: AgentTurnCallbacks) {
+  state.traceEvents.push(event);
+  callbacks?.onTraceEvent?.(event);
 }
 
 function getIncomingWorkflowState(state: ConversationState): Record<string, unknown> {
@@ -57,49 +72,58 @@ function applyWorkflowStateUpdates(state: ConversationState, updates?: Record<st
 function appendTraceForExtraction(
   state: ConversationState,
   extraction: WorkflowExtraction,
-  previousIntent: unknown
+  previousIntent: unknown,
+  callbacks?: AgentTurnCallbacks
 ) {
   const intent = extraction.workflowStateUpdates?.intent;
   if (intent && intent !== previousIntent) {
-    state.traceEvents.push(
+    appendTraceEvent(
+      state,
       traceEvent({
         eventType: "intent",
         title: "Intent detected",
         resultSummary: String(intent)
-      })
+      }),
+      callbacks
     );
   }
 
   const signals = extraction.customerSignals ?? [];
   if (signals.length > 0) {
-    state.traceEvents.push(
+    appendTraceEvent(
+      state,
       traceEvent({
         eventType: "customer_signal",
         title: "Customer signal detected",
         resultSummary: signals.join(", ")
-      })
+      }),
+      callbacks
     );
   }
 }
 
-function appendTraceForStep(state: ConversationState, step: AgentStep) {
+function appendTraceForStep(state: ConversationState, step: AgentStep, callbacks?: AgentTurnCallbacks) {
   if (step.type === "ask_clarifying_question") {
-    state.traceEvents.push(
+    appendTraceEvent(
+      state,
       traceEvent({
         eventType: "clarifying_question",
         title: "Asked focused follow-up",
         resultSummary: `Missing: ${step.missingFields.join(", ")}`
-      })
+      }),
+      callbacks
     );
   }
 
   if (step.type === "request_confirmation") {
-    state.traceEvents.push(
+    appendTraceEvent(
+      state,
       traceEvent({
         eventType: "confirmation_gate",
         title: "Confirmation required",
         resultSummary: step.pendingAction.description
-      })
+      }),
+      callbacks
     );
   }
 }
@@ -168,6 +192,27 @@ function inputSummary(toolName: ToolName, args: Record<string, unknown>) {
   }
 }
 
+function progressForTool(toolName: ToolName) {
+  switch (toolName) {
+    case "lookupOrder":
+      return "Checking order details...";
+    case "getTrackingStatus":
+      return "Checking carrier status...";
+    case "checkReplacementInventory":
+      return "Checking replacement inventory...";
+    case "quoteShippingOptions":
+      return "Checking delivery estimates...";
+    case "evaluatePolicy":
+      return "Evaluating policy...";
+    case "createReplacementOrder":
+      return "Creating replacement order...";
+    case "createReturnLabel":
+      return "Creating return label...";
+    case "createSupportTicket":
+      return "Creating support ticket...";
+  }
+}
+
 function isActionTool(toolName: ToolName) {
   return toolName === "createReplacementOrder" || toolName === "createReturnLabel" || toolName === "createSupportTicket";
 }
@@ -186,10 +231,13 @@ async function renderAssistantContent(input: {
   state: ConversationState;
   step: AgentStep;
   turnId: string;
+  callbacks?: AgentTurnCallbacks;
 }) {
   if (input.step.type === "tool_call") {
     throw new Error("Tool call steps are not customer-facing messages.");
   }
+
+  emitProgress(input.callbacks, "Preparing response...");
 
   if (!shouldRenderWithModel(input.step)) {
     logAgentEvent("response.done", {
@@ -271,6 +319,7 @@ function applyToolOutput(state: ConversationState, toolName: ToolName, output: R
 export async function runAgentTurn(input: {
   message: string;
   state?: ConversationState;
+  callbacks?: AgentTurnCallbacks;
 }): Promise<AgentTurnResult> {
   const turnId = createId("turn");
   const turnStartedAt = Date.now();
@@ -301,6 +350,7 @@ export async function runAgentTurn(input: {
   let extraction: WorkflowExtraction;
   const extractionStartedAt = Date.now();
   try {
+    emitProgress(input.callbacks, "Understanding request...");
     extraction = await modelClient.extractWorkflowUpdate({ userMessage: input.message, state: workingState });
   } catch (error) {
     console.error("[bookly-agent] workflow extraction failed", error);
@@ -316,7 +366,7 @@ export async function runAgentTurn(input: {
   });
 
   applyWorkflowExtraction(workingState, extraction);
-  appendTraceForExtraction(workingState, extraction, previousIntent);
+  appendTraceForExtraction(workingState, extraction, previousIntent, input.callbacks);
 
   let lastStep: AgentStep | undefined;
   for (let iteration = 0; iteration < 8; iteration += 1) {
@@ -332,7 +382,7 @@ export async function runAgentTurn(input: {
     });
 
     applyWorkflowStateUpdates(workingState, step.workflowStateUpdates);
-    appendTraceForStep(workingState, step);
+    appendTraceForStep(workingState, step, input.callbacks);
 
     if (step.type === "tool_call") {
       workingState.pendingAction = undefined;
@@ -343,6 +393,7 @@ export async function runAgentTurn(input: {
         toolName: step.toolName,
         args: step.args
       });
+      emitProgress(input.callbacks, progressForTool(step.toolName));
       try {
         result = await executeTool(step.toolName, step.args);
       } catch (error) {
@@ -360,7 +411,8 @@ export async function runAgentTurn(input: {
       const isPolicy = step.toolName === "evaluatePolicy";
       const isAction = isActionTool(step.toolName);
 
-      workingState.traceEvents.push(
+      appendTraceEvent(
+        workingState,
         traceEvent({
           eventType: isAction ? "action_result" : isPolicy ? "policy_check" : "tool_call",
           title: isAction ? "Action completed" : isPolicy ? "Policy evaluated" : "Tool called",
@@ -368,7 +420,8 @@ export async function runAgentTurn(input: {
           inputSummary: inputSummary(step.toolName, step.args),
           resultSummary: result.resultSummary || summarizeValue(result.output),
           policySource: result.policySource
-        })
+        }),
+        input.callbacks
       );
       continue;
     }
@@ -380,7 +433,8 @@ export async function runAgentTurn(input: {
         userMessage: input.message,
         state: workingState,
         step,
-        turnId
+        turnId,
+        callbacks: input.callbacks
       });
       const assistantMessage = createMessage("assistant", message);
       workingState.messages.push(assistantMessage);
@@ -399,7 +453,8 @@ export async function runAgentTurn(input: {
         userMessage: input.message,
         state: workingState,
         step,
-        turnId
+        turnId,
+        callbacks: input.callbacks
       });
       const assistantMessage = createMessage("assistant", message);
       workingState.messages.push(assistantMessage);
@@ -414,19 +469,20 @@ export async function runAgentTurn(input: {
     workingState.pendingAction = undefined;
     const message = await renderAssistantContent({
       modelClient,
-    userMessage: input.message,
-    state: workingState,
-    step,
-    turnId
-  });
-  const assistantMessage = createMessage("assistant", message);
-  workingState.messages.push(assistantMessage);
-  logAgentEvent("turn.done", {
-    turnId,
-    durationMs: Date.now() - turnStartedAt,
-    finalStepType: step.type
-  });
-  return { assistantMessage, state: workingState };
+      userMessage: input.message,
+      state: workingState,
+      step,
+      turnId,
+      callbacks: input.callbacks
+    });
+    const assistantMessage = createMessage("assistant", message);
+    workingState.messages.push(assistantMessage);
+    logAgentEvent("turn.done", {
+      turnId,
+      durationMs: Date.now() - turnStartedAt,
+      finalStepType: step.type
+    });
+    return { assistantMessage, state: workingState };
   }
 
   const fallback = createMessage(
