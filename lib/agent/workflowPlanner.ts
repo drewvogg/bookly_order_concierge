@@ -227,7 +227,31 @@ function addDaysToDemoToday(days: number) {
   return date.toISOString().slice(0, 10);
 }
 
+function isOnOrBeforeDemoToday(date: unknown) {
+  return typeof date === "string" && date <= DEMO_TODAY;
+}
+
+function describesMissedExpectedDelivery(message: string) {
+  return /\b(supposed to (?:be here|arrive|get here|come|be delivered)|should(?:'ve| have) (?:arrived|been here|come|been delivered)|expected (?:it|my order|the order|delivery|the package).{0,24}(?:arrive|be here|today|yesterday|ago)|(?:was|were) due (?:today|yesterday|to arrive|for delivery))\b/i.test(
+    message
+  );
+}
+
+function requestsCustomerDeadline(message: string) {
+  return /\b(need(?:\s+(?:it|this|the book|my order|the package))?|must|has to|have to|deadline|by|before|no later than|can (?:it|this|the book|my order|the package).{0,24}(?:arrive|get here|be delivered)|could (?:it|this|the book|my order|the package).{0,24}(?:arrive|get here|be delivered)|get (?:it|this|the book|my order|the package) here)\b/i.test(
+    message
+  );
+}
+
+export function shouldIgnoreExtractedCustomerDeadline(message: string, deadline: unknown) {
+  return isOnOrBeforeDemoToday(deadline) && describesMissedExpectedDelivery(message) && !requestsCustomerDeadline(message);
+}
+
 function parseCustomerDeadline(message: string) {
+  if (describesMissedExpectedDelivery(message) && !requestsCustomerDeadline(message)) {
+    return undefined;
+  }
+
   const explicitRelativeDeadline = message.match(
     /\b(?:need(?:\s+(?:it|this|the book|my order))?|arriv(?:e|es)|deliver(?:ed|y)?)\b[^.?!;]*(today|tomorrow)\b/i
   );
@@ -302,9 +326,13 @@ function extractWorkflowFields(message: string) {
   if (zipCode) updates.zipCode = zipCode;
   if (orderId) updates.orderId = orderId;
   if (item) updates.itemHint = item.hint;
-  if (customerDeadline) updates.customerDeadline = customerDeadline;
-  if (customerDeadline) updates.customerDeadlineParseFailed = false;
-  if (!customerDeadline && looksLikeDeadlineAttempt(message)) updates.customerDeadlineParseFailed = true;
+  if (customerDeadline && !shouldIgnoreExtractedCustomerDeadline(message, customerDeadline)) {
+    updates.customerDeadline = customerDeadline;
+    updates.customerDeadlineParseFailed = false;
+  }
+  if (!customerDeadline && looksLikeDeadlineAttempt(message) && !describesMissedExpectedDelivery(message)) {
+    updates.customerDeadlineParseFailed = true;
+  }
   const returnReason = extractReturnReason(message);
   if (returnReason) updates.returnReason = returnReason;
   if (confirmsOriginalCondition(message)) updates.returnConditionConfirmed = true;

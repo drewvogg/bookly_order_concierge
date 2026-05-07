@@ -1,6 +1,6 @@
 import OpenAI from "openai";
 import { validateWorkflowExtraction } from "./workflowExtractionValidator";
-import { extractDeterministicWorkflowUpdate } from "./workflowPlanner";
+import { extractDeterministicWorkflowUpdate, shouldIgnoreExtractedCustomerDeadline } from "./workflowPlanner";
 import { DEMO_TODAY, type AgentInput, type ResponseRenderInput, type WorkflowExtraction } from "./types";
 import type { ModelClient } from "./modelClient";
 import type { ChatCompletionMessageParam } from "openai/resources/chat/completions";
@@ -35,6 +35,8 @@ Extraction rules:
 - Always classify obvious requests: returns/refunds/labels as return_or_refund; late/missing/stuck delivery or replacement requests as delivery_exception; tracking/status questions as order_status.
 - If a tracking/status question also says the order is late, missed an expected delivery date, is needed by a deadline, or asks what can be done about a delayed package, classify it as delivery_exception rather than order_status.
 - Use ${DEMO_TODAY} as the demo date for relative dates like today/tomorrow.
+- Set customerDeadline only when the customer gives a desired deadline for replacement or resolution, such as "I need it by tomorrow" or "can it get here by May 7."
+- Do not set customerDeadline from missed expected-delivery language like "it was supposed to be here today," "it should have arrived yesterday," or "it is late." Treat that as delivery context and urgency instead.
 - If the user appears to provide a deadline but it cannot be normalized to YYYY-MM-DD, set customerDeadlineParseFailed true.
 - Mark confirmationIntent for short yes/no answers when the previous assistant question was a yes/no or confirmation question.
 - Mark returnConditionConfirmed true for answers that mean unused/original condition/packaging is satisfied; false for used/opened/not original.
@@ -136,12 +138,19 @@ function normalizeWorkflowExtraction(input: {
     delete extractedUpdates.returnReason;
   }
 
+  const workflowStateUpdates = {
+    ...fallbackUpdates,
+    ...extractedUpdates
+  };
+
+  if (shouldIgnoreExtractedCustomerDeadline(input.userMessage, workflowStateUpdates.customerDeadline)) {
+    delete workflowStateUpdates.customerDeadline;
+    delete workflowStateUpdates.customerDeadlineParseFailed;
+  }
+
   return {
     ...input.extraction,
-    workflowStateUpdates: {
-      ...fallbackUpdates,
-      ...extractedUpdates
-    },
+    workflowStateUpdates,
     confirmationIntent:
       input.extraction.confirmationIntent === "unclear"
         ? input.fallbackExtraction.confirmationIntent
