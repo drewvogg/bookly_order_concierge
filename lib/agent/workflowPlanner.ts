@@ -453,7 +453,7 @@ function getCustomerSignalEscalation(fields: PlannerState) {
     };
   }
 
-  const signalCount = typeof fields.escalationSignalCount === "number" ? fields.escalationSignalCount : 0;
+  const signalCount = escalationSignalCount(fields);
   if (signalCount >= booklyRepository.policies.customerSignalEscalationThreshold) {
     return {
       issueType: "customer_sentiment_review",
@@ -466,8 +466,65 @@ function getCustomerSignalEscalation(fields: PlannerState) {
   return undefined;
 }
 
+type CustomerSignalEscalation = NonNullable<ReturnType<typeof getCustomerSignalEscalation>>;
+
+function escalationSignalCount(fields: PlannerState) {
+  return typeof fields.escalationSignalCount === "number" ? fields.escalationSignalCount : 0;
+}
+
 function isHumanHelpEscalation(escalation: ReturnType<typeof getCustomerSignalEscalation>) {
   return escalation?.issueType === "customer_requested_human_help";
+}
+
+function policyOutcomeKey(orderId: string | undefined, decision: Record<string, unknown> | undefined) {
+  const reasonCode = text(decision?.reasonCode);
+  const recommendedAction = text(decision?.recommendedAction);
+
+  if (!orderId || (!reasonCode && !recommendedAction)) {
+    return undefined;
+  }
+
+  return `${orderId}:${reasonCode ?? recommendedAction}`;
+}
+
+function automatedRemediationExhaustedUpdates(
+  fields: PlannerState,
+  orderId: string | undefined,
+  decision: Record<string, unknown> | undefined
+) {
+  const outcomeKey = policyOutcomeKey(orderId, decision);
+  if (!outcomeKey) {
+    return {};
+  }
+
+  return {
+    automatedRemediationExhaustedKey: outcomeKey,
+    automatedRemediationExhaustedSignalCount: escalationSignalCount(fields)
+  };
+}
+
+function shouldEscalateAfterAutomatedRemediation(
+  fields: PlannerState,
+  orderId: string | undefined,
+  decision: Record<string, unknown> | undefined,
+  escalation: ReturnType<typeof getCustomerSignalEscalation>
+): escalation is CustomerSignalEscalation {
+  if (!escalation) {
+    return false;
+  }
+
+  if (isHumanHelpEscalation(escalation)) {
+    return true;
+  }
+
+  const outcomeKey = policyOutcomeKey(orderId, decision);
+  const priorKey = text(fields.automatedRemediationExhaustedKey);
+  const priorSignalCount =
+    typeof fields.automatedRemediationExhaustedSignalCount === "number"
+      ? fields.automatedRemediationExhaustedSignalCount
+      : 0;
+
+  return Boolean(outcomeKey && priorKey === outcomeKey && escalationSignalCount(fields) > priorSignalCount);
 }
 
 function hasDeliveryResolutionContext(fields: PlannerState) {
@@ -687,20 +744,6 @@ export function planNextStep(input: AgentInput & { extraction: WorkflowExtractio
     const deliveryStep = deliveryResolutionStep(fields, workflowStateUpdates);
     if (deliveryStep) {
       return deliveryStep;
-    }
-
-    if (activeOrderId && supportEscalation) {
-      return supportTicketConfirmationStep({
-        orderId: activeOrderId,
-        escalation: supportEscalation,
-        context: {
-          customerSignals: {
-            humanHelpRequested: fields.humanHelpRequested,
-            escalationSignalCount: fields.escalationSignalCount
-          }
-        },
-        workflowStateUpdates
-      });
     }
 
     const policyDecision = getPolicyDecision(fields);
@@ -1145,7 +1188,8 @@ function afterPolicy(fields: PlannerState): AgentStep {
       return {
         type: "respond",
         message:
-          `${decision.customerExplanation} I cannot create a self-service return label for it, but if there are special circumstances I can create a support review ticket.`
+          `${decision.customerExplanation} I cannot create a self-service return label for it, but if there are special circumstances I can create a support review ticket.`,
+        workflowStateUpdates: automatedRemediationExhaustedUpdates(fields, orderId, decision)
       };
     }
 
@@ -1207,10 +1251,25 @@ function afterPolicy(fields: PlannerState): AgentStep {
     }
 
     if (decision.reasonCode === "not_missing_long_enough") {
+      if (shouldEscalateAfterAutomatedRemediation(fields, orderId, decision, supportEscalation)) {
+        return supportTicketConfirmationStep({
+          orderId,
+          escalation: supportEscalation,
+          context: {
+            policyDecision: decision,
+            customerSignals: {
+              humanHelpRequested: fields.humanHelpRequested,
+              escalationSignalCount: fields.escalationSignalCount
+            }
+          }
+        });
+      }
+
       return {
         type: "respond",
         message:
-          `${decision.customerExplanation} Please check back after the carrier has gone at least ${booklyRepository.policies.lostPackageMinimumHoursWithoutScan} hours without a meaningful scan.`
+          `${decision.customerExplanation} Please check back after the carrier has gone at least ${booklyRepository.policies.lostPackageMinimumHoursWithoutScan} hours without a meaningful scan.`,
+        workflowStateUpdates: automatedRemediationExhaustedUpdates(fields, orderId, decision)
       };
     }
 
@@ -1234,7 +1293,7 @@ function afterPolicy(fields: PlannerState): AgentStep {
       };
     }
 
-    if (supportEscalation) {
+    if (shouldEscalateAfterAutomatedRemediation(fields, orderId, decision, supportEscalation)) {
       return supportTicketConfirmationStep({
         orderId,
         escalation: supportEscalation,
