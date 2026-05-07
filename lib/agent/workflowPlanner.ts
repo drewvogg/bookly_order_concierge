@@ -911,13 +911,14 @@ function afterTool(fields: PlannerState, workflowStateUpdates: PlannerState): Ag
       if (matches.length > 1) {
         const options = matches
           .map((match) => asRecord(match))
+          .filter((match): match is Record<string, unknown> => Boolean(match))
+          .sort((a, b) => (text(b.placedAt) ?? "").localeCompare(text(a.placedAt) ?? ""))
+          .map((match) => `- ${match.orderId} (${match.itemTitle}, placed ${match.placedAt})`)
           .filter(Boolean)
-          .map((match) => `${match?.orderId} (${match?.itemTitle}, placed ${match?.placedAt})`)
-          .filter(Boolean)
-          .join("; ");
+          .join("\n");
         return {
           type: "ask_clarifying_question",
-          message: `I found a few matching orders: ${options}. Which order should I use?`,
+          message: `I found a few matching orders, sorted by order date:\n${options}\nWhich order should I use?`,
           missingFields: ["orderId"]
         };
       }

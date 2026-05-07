@@ -172,6 +172,7 @@ h2 {
   font-size: 15px;
   line-height: 1.48;
   overflow-wrap: anywhere;
+  white-space: pre-wrap;
 }
 
 .typing-indicator,
