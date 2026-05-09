@@ -99,7 +99,7 @@ function quoteInventoryOption(input: {
       return quote ? { location, quote } : undefined;
     })
     .filter(isDefined)
-    .sort((a, b) => a.quote.estimatedDelivery.localeCompare(b.quote.estimatedDelivery));
+    .sort((a, b) => b.quote.estimatedDelivery.localeCompare(a.quote.estimatedDelivery));
   const fastest = quotes[0];
   const estimatedDelivery = fastest?.quote?.estimatedDelivery ?? null;
 
